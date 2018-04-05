@@ -1,0 +1,29 @@
+---
+documentclass: article
+title: Caladrius --- Design Document
+author: Thomas Cooper
+date: \today
+geometry: margin=2cm
+fontsize: 12pt
+toc: true
+colorlinks: true
+linkcolor: OliveGreen
+urlcolor: RoyalBlue
+
+# pandoc-crossref options
+numberSections: false
+sectionsDepth: -1
+secPrefix:
+    - "Section"
+    - "Sections"
+figPrefix:
+    - "Figure"
+    - "Figures"
+tblPrefix:
+    - "Table"
+    - "Tables"
+eqnPrefix:
+    - "Equation"
+    - "Equations"
+---
+
