@@ -1,30 +1,34 @@
 """ This is the rooting logic for the Apache Heron topology performance
 modelling API """
 
-import logging
+from flask_restful import Resource, reqparse
 
-import hug
+class HeronCurrent(Resource):
 
-from falcon import HTTP_202
+    def __init__(self):
+        self.parser = reqparse.RequestParser()
+        self.parser.add_argument('arrival_rate', type=int, required=True,
+                                 help='Arrival rate must be supplied')
+        super().__init__()
 
-LOG: logging.Logger = logging.getLogger(__name__)
+    def get(self, topo_id: str):
+        args = self.parser.parse_args()
+        return (f"You want info on the currently running Heron topology: "
+                f"{topo_id} if the arrival rate was {args['arrival_rate']}")
 
-@hug.get("/{topology_id}")
-def topology(topology_id: str):
-    return f"You want info on the Heron topology: {topology_id}"
+class HeronProposed(Resource):
 
-@hug.get("/current/{topology_id}")
-def current_topology(topology_id: str):
-    return (f"You want info on the currently running Heron topology: "
-            f"{topology_id}")
+    def __init__(self):
+        self.parser = reqparse.RequestParser()
+        self.parser.add_argument('model_id', type=int, required=True,
+                                 help='Model ID must be supplied')
+        super().__init__()
 
-@hug.get("/proposed/{topology_id}", examples="model_id=1234")
-def get_proposed_topology(model_id: int, topology_id: str):
-    msg:str = (f"Results requested for model: {model_id} of "
-               f"topology: {topology_id}")
-    LOG.info(msg)
-    return msg
+    def get(self, topo_id: str):
+        args = self.parser.parse_args()
+        msg:str = (f"Results requested for model: {args['model_id']} of "
+                   f"topology: {topo_id}")
+        return msg
 
-@hug.post("/proposed/{topology_id}")
-def proposed_topology(body, topology_id: str, response):
-    response.status = HTTP_202
+    def post(self, topo_id: str):
+        return 202

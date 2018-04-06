@@ -285,16 +285,20 @@ graphs.
 
 # Controller {#sec:controller}
 
-The controller is the main process for Caladrius. It is responsible for reading in the configuration files (see @sec:config)
+The controller is the main process for Caladrius. It is responsible for reading
+in the configuration files (see @sec:config)
 
 # Configuration Files {#sec:config}
 
-Caladrius will be highly configurable, all the modelling, metrics and graph processing code can be specified via YAML files in the `/config` directory. 
+Caladrius will be highly configurable, all the modelling, metrics and graph
+processing code can be specified via YAML files in the `/config` directory. 
 
 # Proposed Work Plan
 
 The system proposed above is quite complex and represents the end goal for the
-Caladrius service. Initially the aim will be to provide a single calculation pipeline with a single implementation of each interface and a single topology model. 
+Caladrius service. Initially the aim will be to provide a single calculation
+pipeline with a single implementation of each interface and a single topology
+model. 
 
 The proposed sequence of work is listed below:
 

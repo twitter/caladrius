@@ -1,9 +1,13 @@
 """ This is the routing logic for the Caladrius API. """
 
-import hug
+from flask import Flask
+from flask_restful import Api
 
-from caladrius.api.model import root as model_root
+from caladrius.api.model.topology.heron import HeronCurrent, HeronProposed
 
-@hug.extend_api("/model")
-def model_api():
-    return [model_root]
+app = Flask(__name__)
+api = Api(app)
+
+api.add_resource(HeronCurrent, '/model/topology/heron/current/<string:topo_id>')
+api.add_resource(HeronProposed, '/model/topology/heron/proposed/<string:topo_id>')
+
