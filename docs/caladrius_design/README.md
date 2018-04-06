@@ -14,5 +14,5 @@ following command (change `output/main.pdf` to your desired output):
 
     pandoc --from markdown --to latex -o output/main.pdf \
         --filter pandoc-crossref --number-sections \
-        *.md meta.yaml
+        caladrius_design.md meta.yaml
 

@@ -7,8 +7,9 @@ modelling service *Caladrius*^[This is the Roman name for the legend of the
 healing bird that takes sickness into itself, the ancient Greek version of this
 is called *Dhalion*]. The aim of this service is to accept a physical plan (a
 mapping of component instances to logical containers --- called a packing plan
-in Heron) for a topology and use metrics from that running topology to predict
-its performance if it were to be configured according to the proposed plan.
+in Heron) for a stream processing topology and use metrics from that running
+topology to predict its performance if it were to be configured according to
+the proposed plan.
 
 # System Overview
 
@@ -16,38 +17,24 @@ The proposed layout for the system is shown below:
 
 ![Caladrius System Overview](./imgs/caladrius_overview.png){#fig:system-overview}
 
-## System Operation
-
-In order to model a proposed topology physical plan, the protocol buffer
-`packing_plan` message is issued to the Caladrius API. The API then passes the
-plan, along with instances of the Metrics and Graph interfaces to one or more
-Model implementations^[In future which model to use could be included in the
-request. For now it will just be configured on the Caladrius side].
-
-The Model instances then use their custom code along with data provided by the
-Metrics and Graph interfaces to calculate the expected performance. The results
-of this modelling are then reported via a protocol buffer `modelling_results`
-message^[Alternatively this could be a simple JSON message].
-
 # Caladrius API
 
-Caladrius exposes a REST endpoint that will accept a serialised physical
-/ packing plan as part of GET message. This packing plan will be deserialised
-and passed to the Controller which will process the proposed plan. Caladrius
-will accept requests on several different end points depending on the modelling
-requirements.
-
-## Endpoints
+Caladrius will provide several REST endpoints to allow clients to query the
+various modelling systems it provides. Initially Caladrius will provide
+topology performance (end-to-end/complete latency, throughput etc) and traffic
+(incoming workload) modelling services. Other services such as topology graph
+analysis could be added later.
 
 The general format of the Caladrius end points is: `/model/<aspect being
 modelled>/<DSPS name>/<current or proposed>/<topology id>`. Examples endpoints
 are given below:
 
-### Topology Performance
+## Topology Performance
 
 * `POST /model/toplogy/heron/proposed/{topology-id}` --- This request will
   model the proposed packing plan which is contained within the `POST`
-  request's body. The payload should be the protobuf serialised packing plan
+  request's body. The payload should be the protobuf serialised [packing 
+  plan](https://github.com/apache/incubator-heron/blob/master/heron/proto/packing_plan.proto)
   message issued by Heron. 
 
 * `POST /model/topology/storm/proposed/{topology-id}` --- This request will
@@ -64,13 +51,13 @@ are given below:
   rates for each spout instance can be supplied by using their `TaskID`s as
   keys:
 
-       ```
-        GET /model/heron/current/wordcount1?traffic=150
-       ```
-       
-       ```
-        GET /model/heron/current/wordcount1?10=141&11=154&12=149
-       ```
+    ```
+     GET /model/heron/current/wordcount1?traffic=150
+    ```
+   
+    ```
+     GET /model/heron/current/wordcount1?10=141&11=154&12=149
+    ```
 
 * `GET /model/storm/current/{topology-id}` --- Issuing this request will model
   the performance of the currently deployed physical plan of the specified
@@ -80,26 +67,76 @@ are given below:
   rates for each spout executor can be supplied by using their `TaskID` ranges
   as keys:
 
-       ```
-        GET /model/heron/topology/current/wordcount1?traffic=150
-       ```
+    ```
+    GET /model/heron/topology/current/wordcount1?traffic=150
+    ```
        
-       ```
-        GET /model/heron/topology/current/wordcount1?10-12=141&13-15=154&16-18=149
-       ```
+    ```
+    GET /model/heron/topology/current/wordcount1?10-12=141&13-15=154&16-18=149
+    ```
 
-#### Response
+### Asynchronous request/response
 
-The response format from the API will contain the results of the performance
-prediction for provided packing plan. The response will be a JSON formatted
-string containing the results of the modelling. The type of results listed will
-vary by model implementation.
+It is important to consider that a call to the topology modelling endpoints may
+incur a significant wait (up to several seconds, depending on the modelling
+logic). Therefore it seems prudent to design the API to be asynchronous,
+allowing the client to continue with other operations while the modelling is
+completed. Also, having an asynchronous API also means that making the
+calculation pipeline, on the server side, run concurrently should be easier.
+
+A call to the modelling endpoints will return a reference code (model ID) for
+the proposed plan being calculated. The client can then send a GET request to
+the original request URL, with the model ID as a parameter, to see if the
+calculation in complete. If it is not the client will receive a "pending"
+response, when the calculation is complete the JSON modelling results will
+posted at that URL. This also has the advantage of providing clients with a way
+to query past modelling runs without re-running the calculations. An example is
+given below:
+
+``` 
+POST /model/topology/heron/WordCount1
+
+RESPONSE 202 model_id=1234
+
+GET /model/topology/heron/WordCount1?model_id=1234
+```
+
+### Response
+
+The response format from the topology performance modelling API will contain
+the results of the performance prediction for the provided packing plan. The
+response will be a JSON formatted string containing the results of the
+modelling. The type of results listed will vary by model implementation.
 
 However, certain fields will be common to all returned JSON objects:
 
-### Traffic Prediction
+```json
+{
+    'model_id' : 1234
+    'prediction_method': 'Queuing Theory',
+    'requested' : '2018-04-05T01:34:56.770483',
+    'completed' : '2018-04-05T01:35:01.871964',
+    'topology_id': 'WordCount1',
+    'results': {
+        'latency' : {
+            'units' : 'ms'
+            'mean' : 124.25
+            'max' : 356.24
+            'min' : 95.56
+        }
+        'throughput' : {
+            'units' : 'tps'
+            'mean' : 1024
+            'max' : 2096
+            'min' : 256
+        }
+    }
+}
+```
 
-#### Request
+## Traffic Prediction
+
+### Request
 
 * `GET /model/traffic/<heron or storm>/{topology-id}` --- Issuing this request
   will trigger a prediction of the expected traffic for the supplied Heron or
@@ -115,49 +152,111 @@ However, certain fields will be common to all returned JSON objects:
         GET /model/traffic/heron/WordCount1?duration=2&units=h
        ```
 
-#### Response
+### Response
 
-The response format for the traffic predictions will vary according to the implementation of the `TrafficModel` interface. However, certain key summary 
+The response format for the traffic predictions will vary according to the
+implementation of the `TrafficModel` interface. However, certain key summary
 statistics will be included in all responses:
 
 ```json
 {
-    'prediction method': 'default',
-    'timestamp': '2018-04-05T01:34:56.770483',
+    'prediction_method': 'average',
+    'requested': '2018-04-05T01:34:56.770483',
+    'completed': '2018-04-05T01:34:58.770483',
     'topology_id': 'WordCount1',
     'results': {
-        'average_arrival_rate': 150,
-        'max_arrival_rate' : 323,
-        'min_arrival_rate' : 102
+        'arrival_rate': {
+            'mean' : 150 
+            'max' : 323,
+            'min' : 102
+        }
     }
 }
 ```
 
-### Asynchronous responses
+# Topology Performance Modelling Interface {#sec:topo-performance}
 
-It is important to consider that a call to the modelling endpoints may incur
-a significant wait (up to several seconds, depending on the modelling logic). Therefore it seems prudent to design the API to be asynchronous. Having an asynchronous API also means that making the calculation pipeline run concurrently should be easier.
+Caladrius will be able to run one or more models against the proposed packing
+plan(s). Each instance of the model interface will accept the Metrics (see
+@sec:metrics) and Graph (see @sec:graph) interfaces and will use their custom
+code to calculate the expected performance. The `TopologyModel` interface is
+shown below:
 
-A call to the modelling endpoints will return a reference code for the proposed
-plan being calculated. The client can then query the original request URL plus
-this calculation code to see if the calculation in complete, when it is the
-JSON response will posted at that URL.
+```python
+class TopologyModel(ABC):
+    """ Abstract base class for all topology performance modelling classes """
 
-# Model Interface
+    @abstractmethod
+    def __init__(self, metrics: MetricsClient, graph: GraphClient) -> None:
+        self.metrics = metrics
+        self.graph = graph
 
-Caladrius will be able to run one or more Models against the proposed packing
-plan(s). Each instance of the model interface will accept the Metrics and Graph
-Interfaces (see below) and will use their custom code to calculate the expected
-performance.
+    @abstractmethod
+    def predict_performance(self, topology_id: str,
+                            proposed_plan: Any) -> dict:
+        """ Predicts the performance of the specified topology when configured
+        according to the proposed physical plan.
 
-# Metrics Interface
+        Arguments:
+            topology_id (str):  The identification string for the topology
+                                whose performance will be predicted.
+            proposed_plan:  A data structure containing the proposed physical
+                            plan.
+
+        Returns:
+            A dictionary (suitable for conversion to JSON) containing the
+            performance prediction.
+        """
+        pass
+```
+
+# Traffic Modelling Interface {#sec:traffic}
+
+Similar to the topology performance modelling interface (see 
+@sec:topo-performance), there is an abstract base class for predicting traffic into the topologies:
+
+```python
+class TrafficModel(ABC):
+    """ Abstract base class for all traffic modelling classes """
+
+    @abstractmethod
+    def __init__(self, metrics: MetricsClient, graph: GraphClient) -> None:
+        self.metrics = metrics
+        self.graph = graph
+
+    @abstractmethod
+    def predict_traffic(self, topology_id: str, duration: int) -> dict:
+        """ Predicts the expected traffic arriving at the specified topology
+        over the period defined by the duration argument.
+
+        Arguments:
+            topology_id (str):  The identification string for the topology
+                                whose traffic will be predicted.
+            duration (int): The number of minuets over which to summarise the
+                            traffic predictions. For example duration = 120
+                            would equate to "predict the traffic over the next
+                            two hours".
+
+        Returns:
+            A dictionary (suitable for conversion to JSON) containing the
+            traffic prediction.
+        """
+        pass
+```
+
+At it simplest a concrete implementation of traffic model could take the arrival rate into the specified topology over the last hour and return an average as that as a predictor for the next hour.
+
+# Metrics Interface {#sec:metrics}
 
 The Metrics interface will provide methods for accessing and summarising
-performance metrics from a given metrics source. Initially implementations for
-the Topology Master and Cuckoo based metrics will be provided but
-implementations for the other metrics sinks could easily be created.
+performance metrics from a given metrics source. For example concrete implementations could allow metrics to be extracted from the Heron Topology Master metrics API or the Cuckoo timeseries database.
 
-# Graph Interface
+There is a master `MetricsClient` abstract base class which is the superclass
+for each of the DSPS metric client interfaces e.g. `HeronMetrics`,
+`StormMetrics` etc. The DSPS metric client interfaces define the methods
+required to model topologies and traffic for each of the supported DSPSs. 
+
+# Graph Interface {#sec:graph}
 
 Topologies can be represented as directed graphs^[As an aside, it is often said
 that Storm/Heron topologies are Directed Acyclic Graphs (DAGs), this is not
@@ -186,20 +285,11 @@ graphs.
 
 # Controller {#sec:controller}
 
+The controller is the main process for Caladrius. It is responsible for reading in the configuration files (see @sec:config)
+
 # Configuration Files {#sec:config}
 
-
-
-# Language
-
-All the main components of Caladrius will be written in Python^[Python here
-refers to Python 3 not Python 2 or Legacy Python as it is now known]. The
-Metric, Graph and Model interfaces will be provided via abstract base classes
-so that other implementations can be provided in future.
-
-The Caladrius API will be a REST API and so in theory could be implemented in
-any language. The use of TinkerPop for the graph interface also means that the
-graph databased service can be accessed in any TinkerPop supported language.
+Caladrius will be highly configurable, all the modelling, metrics and graph processing code can be specified via YAML files in the `/config` directory. 
 
 # Proposed Work Plan
 

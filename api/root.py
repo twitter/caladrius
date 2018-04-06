@@ -1,4 +1,4 @@
-""" This is the main rooting logic for the Caladrius API. """
+""" This is the routing logic for the Caladrius API. """
 
 import hug
 
