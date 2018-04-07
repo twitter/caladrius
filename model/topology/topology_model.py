@@ -4,16 +4,10 @@ modelling """
 from abc import ABC, abstractmethod
 from typing import Any
 
-from caladrius.metrics.metrics_client import MetricsClient
-from caladrius.graph.graph_client import GraphClient
+from caladrius.model.model import Model
 
-class TopologyModel(ABC):
+class TopologyModel(Model):
     """ Abstract base class for all topology performance modelling classes """
-
-    @abstractmethod
-    def __init__(self, metrics: MetricsClient, graph: GraphClient) -> None:
-        self.metrics = metrics
-        self.graph = graph
 
     @abstractmethod
     def predict_performance(self, topology_id: str,

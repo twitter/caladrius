@@ -2,13 +2,10 @@
 
 from abc import ABC, abstractmethod
 
-class TrafficModel(ABC):
-    """ Abstract base class for all traffic modelling classes """
+from caladrius.model.model import Model
 
-    @abstractmethod
-    def __init__(self, metrics, graph) -> None:
-        self.metrics = metrics
-        self.graph = graph
+class TrafficModel(Model):
+    """ Abstract base class for all traffic modelling classes """
 
     @abstractmethod
     def predict_traffic(self, topology_id: str, duration: int) -> dict:

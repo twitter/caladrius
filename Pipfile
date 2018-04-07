@@ -8,6 +8,7 @@ pandas = "*"
 requests = "*"
 hug = "*"
 flask-restful = "*"
+pyyaml = "*"
 
 [dev-packages]
 ipython = "*"

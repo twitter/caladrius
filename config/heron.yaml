@@ -1,0 +1,23 @@
+# Configuration File for the heron specific modelling endpoints
+
+# Paths to Python classes should be absolute to avoid import errors
+
+# Heron tracker service base URL
+heron.tracker.url: 'http://localhost:1234'
+
+# Address of external metrics database
+heron.metrics.database.url: 'http://localhost:1234'
+
+# List of Heron traffic models
+model.traffic.heron:
+    - 'caladrius.model.traffic.heron.dummy_traffic.DummyTrafficModel'
+
+# List of Heron topology performance models for currently deployed topologies
+# with different arrival rates
+model.topology.heron.current:
+    - 'caladrius.model.topology.heron.CurrentTopologyModel'
+
+# List of Heron topology performance models for modelling the performance of
+# proposed packing plans
+model.topology.heron.proposed:
+    - 'caladrius.model.topology.heron.QueuingTheoryModel'

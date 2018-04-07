@@ -11,13 +11,18 @@ in Heron) for a stream processing topology and use metrics from that running
 topology to predict its performance if it were to be configured according to
 the proposed plan.
 
-# System Overview
+Caladrius will also provide other modelling service such as traffic prediction
+(arrival rate into a topology) and can be extended to provide other analyses of
+topology layout and performance.
+
+# System Overview {#sec:system-overview}
 
 The proposed layout for the system is shown below:
 
-![Caladrius System Overview](./imgs/caladrius_overview.png){#fig:system-overview}
+![Caladrius System
+  Overview](./imgs/caladrius_overview.png){#fig:system-overview}
 
-# Caladrius API
+# Caladrius API {#sec:api}
 
 Caladrius will provide several REST endpoints to allow clients to query the
 various modelling systems it provides. Initially Caladrius will provide
@@ -52,11 +57,11 @@ are given below:
   keys:
 
     ```
-     GET /model/heron/current/wordcount1?traffic=150
+    GET /model/heron/current/wordcount1?traffic=150
     ```
    
     ```
-     GET /model/heron/current/wordcount1?10=141&11=154&12=149
+    GET /model/heron/current/wordcount1?10=141&11=154&12=149
     ```
 
 * `GET /model/storm/current/{topology-id}` --- Issuing this request will model
@@ -106,31 +111,68 @@ GET /model/topology/heron/WordCount1?model_id=1234
 The response format from the topology performance modelling API will contain
 the results of the performance prediction for the provided packing plan. The
 response will be a JSON formatted string containing the results of the
-modelling. The type of results listed will vary by model implementation.
+modelling. The type of results listed will vary by model implementation. By
+default the endpoint will run every model implementation defined in the
+configuration file (see @sec:config) and concatenate the results into a single
+JSON response.
 
-However, certain fields will be common to all returned JSON objects:
+Certain fields will be common to all returned JSON objects:
+
+* Model ID number
+* Topology ID string
+* List of modelling results. Each of which will have:
+    - Model name 
+    - Time taken to calculate the results
+    - List of metric prediction results. Each of which will have:
+        + A units field showing the unit of measurement for this metric
+        + A prediction of mean for this metric
+        + A prediction of the expected maximum value for this metric
+        + A prediction of the expected minimum value for this metric
+
+An example JSON return is shown below:
 
 ```json
 {
     'model_id' : 1234
-    'prediction_method': 'Queuing Theory',
-    'requested' : '2018-04-05T01:34:56.770483',
-    'completed' : '2018-04-05T01:35:01.871964',
     'topology_id': 'WordCount1',
-    'results': {
-        'latency' : {
-            'units' : 'ms'
-            'mean' : 124.25
-            'max' : 356.24
-            'min' : 95.56
+    'model_results': [
+        {
+            'model_name': 'Queuing Theory',
+            'calculation_time' : 2.5,
+            'results' : {
+                'latency' : {
+                    'units' : 'ms'
+                    'mean' : 124.25
+                    'max' : 356.24
+                    'min' : 95.56
+                }
+                'throughput' : {
+                    'units' : 'tps'
+                    'mean' : 1024
+                    'max' : 2096
+                    'min' : 256
+                }
+            }
+        }, 
+        {
+            'model_name': 'Gaussian Process Regression',
+            'calculation_time' : 4.5,
+            'results' : {
+                'latency' : {
+                    'units' : 'ms'
+                    'mean' : 124.25
+                    'max' : 356.24
+                    'min' : 95.56
+                }
+                'throughput' : {
+                    'units' : 'tps'
+                    'mean' : 1024
+                    'max' : 2096
+                    'min' : 256
+                }
+            }
         }
-        'throughput' : {
-            'units' : 'tps'
-            'mean' : 1024
-            'max' : 2096
-            'min' : 256
-        }
-    }
+    ]
 }
 ```
 
@@ -158,38 +200,82 @@ The response format for the traffic predictions will vary according to the
 implementation of the `TrafficModel` interface. However, certain key summary
 statistics will be included in all responses:
 
+* Model ID number
+* Topology ID string
+* The duration of the prediction period for this traffic prediction
+* List of modelling results. Each of which will have:
+    - Model name 
+    - Time taken to calculate the results
+    - List of metric prediction results. Each of which will have:
+        + A units field showing the unit of measurement for this metric
+        + A prediction of mean for this metric
+        + A prediction of the expected maximum value for this metric
+        + A prediction of the expected minimum value for this metric
+
+An example JSON return is shown below:
+
 ```json
 {
-    'prediction_method': 'average',
-    'requested': '2018-04-05T01:34:56.770483',
-    'completed': '2018-04-05T01:34:58.770483',
+    'model_id' : 1234
     'topology_id': 'WordCount1',
-    'results': {
-        'arrival_rate': {
-            'mean' : 150 
-            'max' : 323,
-            'min' : 102
+    'prediction_duration' : 120,
+    'model_results': [
+        {
+            'model_name': 'average',
+            'calculation_time' : 2.5,
+            'results' : {
+                'arrival_rate': {
+                    'mean' : 150 
+                    'max' : 323,
+                    'min' : 102
+                }
+            }
+        }, 
+        {
+            'model_name': 'DLM',
+            'calculation_time' : 5.5,
+            'results' : {
+                'arrival_rate': {
+                    'mean' : 167 
+                    'max' : 478,
+                    'min' : 98
+                }
+            }
         }
-    }
+    ]
 }
+```
+
+# Model Interface
+
+All models used in Caladrius will inherit from the abstract base `Model` class.
+This simply defines the arguments all model constructors will receive, namely
+the model's name (this will be used in all results returned by this model), the
+configuration object (see @sec:config) and the Metrics (see @sec:metrics) and
+Graph (see @sec:graph) interfaces:
+
+```python
+class Model(ABC):
+
+    def __init__(self, name: str, config: Config, metrics: MetricsClient,
+                 graph: GraphClient) -> None:
+        self.name: str = name
+        self.config: Config = config
+        self.metrics: MetricsClient = metrics
+        self.graph: GraphClient = graph
 ```
 
 # Topology Performance Modelling Interface {#sec:topo-performance}
 
-Caladrius will be able to run one or more models against the proposed packing
-plan(s). Each instance of the model interface will accept the Metrics (see
-@sec:metrics) and Graph (see @sec:graph) interfaces and will use their custom
-code to calculate the expected performance. The `TopologyModel` interface is
-shown below:
+Caladrius will be able to run one or more models against the proposed
+physical/packing plan(s). Each instance of the model interface will accept the
+Metrics (see @sec:metrics) and Graph (see @sec:graph) interfaces and will use
+their custom code to calculate the expected performance. The `TopologyModel`
+interface is shown below:
 
 ```python
-class TopologyModel(ABC):
+class TopologyModel(Model):
     """ Abstract base class for all topology performance modelling classes """
-
-    @abstractmethod
-    def __init__(self, metrics: MetricsClient, graph: GraphClient) -> None:
-        self.metrics = metrics
-        self.graph = graph
 
     @abstractmethod
     def predict_performance(self, topology_id: str,
@@ -212,17 +298,13 @@ class TopologyModel(ABC):
 
 # Traffic Modelling Interface {#sec:traffic}
 
-Similar to the topology performance modelling interface (see 
-@sec:topo-performance), there is an abstract base class for predicting traffic into the topologies:
+Similar to the topology performance modelling interface (see
+@sec:topo-performance), there is an abstract base class for predicting traffic
+into the topologies:
 
 ```python
-class TrafficModel(ABC):
+class TrafficModel(Model):
     """ Abstract base class for all traffic modelling classes """
-
-    @abstractmethod
-    def __init__(self, metrics: MetricsClient, graph: GraphClient) -> None:
-        self.metrics = metrics
-        self.graph = graph
 
     @abstractmethod
     def predict_traffic(self, topology_id: str, duration: int) -> dict:
@@ -244,17 +326,28 @@ class TrafficModel(ABC):
         pass
 ```
 
-At it simplest a concrete implementation of traffic model could take the arrival rate into the specified topology over the last hour and return an average as that as a predictor for the next hour.
+At its simplest a concrete implementation of traffic model could take the
+arrival rate into the specified topology over the last hour and return an
+average as the prediction for the next hour. Of course more sophisticated time
+series analysis methods could be employed by implementing a new `TrafficModel`
+and adding it to the appropriate class list in the configuration file (see
+@sec:config).
 
 # Metrics Interface {#sec:metrics}
 
 The Metrics interface will provide methods for accessing and summarising
-performance metrics from a given metrics source. For example concrete implementations could allow metrics to be extracted from the Heron Topology Master metrics API or the Cuckoo timeseries database.
+performance metrics from a given metrics source. For example concrete
+implementations could allow metrics to be extracted from the Heron Topology
+Master metrics API or the Cuckoo timeseries database.
 
 There is a master `MetricsClient` abstract base class which is the superclass
-for each of the DSPS metric client interfaces e.g. `HeronMetrics`,
+for each of the DSPS metric client interfaces: `HeronMetrics`,
 `StormMetrics` etc. The DSPS metric client interfaces define the methods
 required to model topologies and traffic for each of the supported DSPSs. 
+
+The class to be used for the metrics and other client interfaces is specified
+in the configuration file as are the implementation specific configuration
+options for those classes.
 
 # Graph Interface {#sec:graph}
 
@@ -275,31 +368,58 @@ can be changed if needed (to better serve the needs of a particular model)
 without having to reimplement the graph interface code.
 
 Caladrius will provide classes for accessing logical and physical plan
-information from the Heron Tracker API and converting this via
-TinkerPop/Gremlin code into a directed graph representations. It will also
-provide a graph.prediction interface for estimating properties of proposed
-physical plan such as instance to instance routing probabilities.
+information from the DSPS Information APIs and convert this via
+TinkerPop/Gremlin code into directed graph representations. It will also
+provide a `graph.prediction` interface for estimating properties of proposed
+physical plans.
 
-The Model implementation may then use the Graph interface to analyse these
-graphs.
-
-# Controller {#sec:controller}
-
-The controller is the main process for Caladrius. It is responsible for reading
-in the configuration files (see @sec:config)
+Again the Graph Client implementations can be set via the configuration files
+along with implementation specific configuration options (see @sec:config).
 
 # Configuration Files {#sec:config}
 
-Caladrius will be highly configurable, all the modelling, metrics and graph
-processing code can be specified via YAML files in the `/config` directory. 
+Caladrius will be highly configurable^[I am still figuring out the best way to
+implement the configuration of each of the model and client classes], all the
+modelling, metrics and graph processing code can be specified via YAML files in
+the `/config` directory. 
 
-# Proposed Work Plan
+At service start up the `/config` directory is parsed into a `Config` object
+that contains all the configuration keys for Caladrius.
 
-The system proposed above is quite complex and represents the end goal for the
-Caladrius service. Initially the aim will be to provide a single calculation
-pipeline with a single implementation of each interface and a single topology
-model. 
+Each of the modelling end points (see @sec:api) can specify multiple modelling
+implementations that can be run for each request. Each of the specified model
+classes for each endpoint is loaded dynamically as the API is created and
+passed to the appropriate API Resource.
 
-The proposed sequence of work is listed below:
+Each of the DSPSs supported by Caladrius has its configuration values in
+a separate file, an example of the `config/heron.yaml` is shown below:
 
-1) 
+```yaml
+# Configuration File for the heron specific modelling endpoints
+
+# Paths to Python classes should be absolute to avoid import errors
+
+# Heron tracker service base URL
+heron.tracker.url: 'http://localhost:1234'
+
+# Address of external metrics database
+heron.metrics.database.url: 'http://localhost:1234'
+
+# List of Heron traffic models
+model.traffic.heron:
+    - 'caladrius.model.traffic.heron.dummy_traffic.DummyTrafficModel'
+
+# List of Heron topology performance models for currently deployed topologies
+# with different arrival rates
+model.topology.heron.current:
+    - 'caladrius.model.topology.heron.CurrentTopologyModel'
+
+# List of Heron topology performance models for modelling the performance of
+# proposed packing plans
+model.topology.heron.proposed:
+    - 'caladrius.model.topology.heron.QueuingTheoryModel'
+```
+
+A copy of the configuration object is passed to all Model implementations so
+configuration options specific to an implementation can be added to the
+configuration files and will be available at run time.
