@@ -2,6 +2,8 @@
 
 import logging
 
+from typing import List
+
 from flask import Flask
 from flask_restful import Api
 
@@ -28,9 +30,11 @@ def create_router(config: dict) -> Flask:
     models: List[str] = config["model.traffic.heron"]
     model_classes: list = [get_class(model) for model in models]
 
+    heron_metric = config["heron.metrics.client"]
+
     api.add_resource(HeronTraffic,
                      '/model/traffic/heron/<string:topo_id>',
-                     resource_class_kwargs={ 'models': model_classes})
+                     resource_class_kwargs={'models': model_classes})
 
     LOG.info("REST API router created")
 

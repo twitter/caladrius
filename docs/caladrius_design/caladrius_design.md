@@ -2,10 +2,10 @@
 
 # Introduction
 
-This is the design document for the Distributed Stream Processing Topology
-modelling service *Caladrius*^[This is the Roman name for the legend of the
-healing bird that takes sickness into itself, the ancient Greek version of this
-is called *Dhalion*]. The aim of this service is to accept a physical plan (a
+This is the design document for the Distributed Stream Processing System (DSPS)
+Topology modelling service *Caladrius*^[This is the Roman name for the legend
+of the healing bird that takes sickness into itself, the ancient Greek version
+of this is *Dhalion*]. The aim of this service is to accept a physical plan (a
 mapping of component instances to logical containers --- called a packing plan
 in Heron) for a stream processing topology and use metrics from that running
 topology to predict its performance if it were to be configured according to
@@ -17,7 +17,7 @@ topology layout and performance.
 
 # System Overview {#sec:system-overview}
 
-The proposed layout for the system is shown below:
+The proposed layout for the system is shown below in @fig:system-overview:
 
 ![Caladrius System
   Overview](./imgs/caladrius_overview.png){#fig:system-overview}
@@ -36,7 +36,7 @@ are given below:
 
 ## Topology Performance
 
-* `POST /model/toplogy/heron/proposed/{topology-id}` --- This request will
+* `POST /model/topology/heron/proposed/{topology-id}` --- This request will
   model the proposed packing plan which is contained within the `POST`
   request's body. The payload should be the protobuf serialised [packing 
   plan](https://github.com/apache/incubator-heron/blob/master/heron/proto/packing_plan.proto)
@@ -51,33 +51,41 @@ are given below:
 * `GET /model/topology/heron/current/{topology-id}` --- Issuing this request
   will model the performance of the currently deployed physical plan of the
   specified Heron topology using the supplied traffic rate (input into the
-  topology). The `traffic` parameter can either be a single value (tuples per
-  second) which will be applied to every spout instance or individual traffic
-  rates for each spout instance can be supplied by using their `TaskID`s as
-  keys:
+  topology). The traffic rate *for each instance* of a given spout can be
+  supplied as a single value (tuples per second) mapped to the spout component
+  name. The example below would tell Caladrius to predict the performance for
+  the currently running topology `wordCount1` if each of the instances of the
+  `sentenceSpout` spout component were emitting 150 tuples every second:
 
     ```
-    GET /model/heron/current/wordcount1?traffic=150
-    ```
-   
-    ```
-    GET /model/heron/current/wordcount1?10=141&11=154&12=149
+    GET /model/topology/heron/current/wordCount1?sentenceSpout=150
     ```
 
-* `GET /model/storm/current/{topology-id}` --- Issuing this request will model
-  the performance of the currently deployed physical plan of the specified
-  Apache Storm topology using the supplied traffic rate (input into the
-  topology). The `traffic` parameter can either be a single value (tuples per
-  second) which will be applied to every spout executor or individual traffic
-  rates for each spout executor can be supplied by using their `TaskID` ranges
-  as keys:
+    If a spout is not given in the request but is present in the specified
+    topology then the API will return `400` bad request to the client.
+    Alternatively, individual traffic rates for each spout instance can be
+    supplied by using their `TaskID`s as keys:
+        
+    ```
+    GET /model/topology/heron/current/wordCount1?10=141&11=154&12=149
+    ```
+
+    Similarly if an instance is missed then `400` bad request will be returned. 
+
+* `GET /model/topology/storm/current/{topology-id}` --- Issuing this request
+  will model the performance of the currently deployed physical plan of the
+  specified Apache Storm topology using the supplied traffic rate (input into
+  the topology). The traffic rate *for each executor* of a given spout can be
+  supplied as a single value (tuples per second) mapped to the spout component
+  name. Alternatively, individual traffic rates for each spout executor can be
+  supplied by using their `TaskID` ranges as keys:
 
     ```
-    GET /model/heron/topology/current/wordcount1?traffic=150
+    GET /model/topology/storm/current/wordCount1?sentenceSpout=150
     ```
        
     ```
-    GET /model/heron/topology/current/wordcount1?10-12=141&13-15=154&16-18=149
+    GET /model/topology/storm/current/wordCount1?10-12=141&13-15=154&16-18=149
     ```
 
 ### Asynchronous request/response
@@ -89,19 +97,24 @@ allowing the client to continue with other operations while the modelling is
 completed. Also, having an asynchronous API also means that making the
 calculation pipeline, on the server side, run concurrently should be easier.
 
-A call to the modelling endpoints will return a reference code (model ID) for
-the proposed plan being calculated. The client can then send a GET request to
-the original request URL, with the model ID as a parameter, to see if the
-calculation in complete. If it is not the client will receive a "pending"
-response, when the calculation is complete the JSON modelling results will
-posted at that URL. This also has the advantage of providing clients with a way
-to query past modelling runs without re-running the calculations. An example is
-given below:
+A call to the modelling endpoints will return a reference code (`model_id`) for
+the proposed physical plan being calculated^[How this model ID value is
+calculated is an open issue at the moment. Ideally two separately supplied
+proposed physical plans, that happen to be equivalent in layout, would produce
+the same model ID. This implies some kind of comparison or hashing function
+that can compare proposed physical plans. Initially every submission will
+produce a unique ID]. The client can then send a GET request to the original
+request URL, with the model ID as a parameter, to see if the calculation in
+complete. If it is not the client will receive a "pending" response, when the
+calculation is complete the JSON modelling results will posted at that URL.
+This also has the advantage of providing clients with a way to query past
+modelling runs and recover from client failures without re-running the
+calculations. An example query is given below:
 
 ``` 
-POST /model/topology/heron/WordCount1
+POST /model/topology/heron/proposed/WordCount1
 
-RESPONSE 202 model_id=1234
+RESPONSE 202 {model_id : 1234}
 
 GET /model/topology/heron/WordCount1?model_id=1234
 ```
@@ -252,7 +265,10 @@ All models used in Caladrius will inherit from the abstract base `Model` class.
 This simply defines the arguments all model constructors will receive, namely
 the model's name (this will be used in all results returned by this model), the
 configuration object (see @sec:config) and the Metrics (see @sec:metrics) and
-Graph (see @sec:graph) interfaces:
+Graph (see @sec:graph) interfaces. @fig:model-classes shows the class
+hierarchy for the models:
+
+![Model class heirarchy](./imgs/model_class_diagram.png){#fig:model-classes}
 
 ```python
 class Model(ABC):
@@ -265,7 +281,7 @@ class Model(ABC):
         self.graph: GraphClient = graph
 ```
 
-# Topology Performance Modelling Interface {#sec:topo-performance}
+## Topology Performance Modelling Interface {#sec:topo-performance}
 
 Caladrius will be able to run one or more models against the proposed
 physical/packing plan(s). Each instance of the model interface will accept the
@@ -296,7 +312,7 @@ class TopologyModel(Model):
         pass
 ```
 
-# Traffic Modelling Interface {#sec:traffic}
+## Traffic Modelling Interface {#sec:traffic}
 
 Similar to the topology performance modelling interface (see
 @sec:topo-performance), there is an abstract base class for predicting traffic
@@ -341,13 +357,16 @@ implementations could allow metrics to be extracted from the Heron Topology
 Master metrics API or the Cuckoo timeseries database.
 
 There is a master `MetricsClient` abstract base class which is the superclass
-for each of the DSPS metric client interfaces: `HeronMetrics`,
-`StormMetrics` etc. The DSPS metric client interfaces define the methods
-required to model topologies and traffic for each of the supported DSPSs. 
+for each of the DSPS metric client interfaces: `HeronMetricsClient`,
+`StormMetricsClient` etc. The DSPS metric client interfaces define the methods
+required to model topologies and traffic for each of the supported DSPSs.
+@Fig:metric-classes show an example of the metric class hierarchy. 
+
+![Metrics class heirarchy](./imgs/metrics_class_diagram.png){#fig:metric-classes}
 
 The class to be used for the metrics and other client interfaces is specified
 in the configuration file as are the implementation specific configuration
-options for those classes.
+options for those classes (see @sec:config).
 
 # Graph Interface {#sec:graph}
 
@@ -423,3 +442,29 @@ model.topology.heron.proposed:
 A copy of the configuration object is passed to all Model implementations so
 configuration options specific to an implementation can be added to the
 configuration files and will be available at run time.
+
+# Planned work
+
+The design above represents a final vision for the Caladrius system. With
+limited time available certain features will need to be prioritised. Below is
+a plan for the implementation of a minimum viable test system:
+
+1) Week commencing 9th April:
+    - Finish design document
+    - Complete Cuckoo and Heron TMaster metrics interfaces
+
+2) Week commencing 16th April:
+
+3) Week commencing 23rd April:
+
+4) Week commencing 30th April:
+
+5) Week commencing 7th May:
+
+6) Week commencing 14th May:
+
+7) Week commencing 21st May:
+
+8) Week commencing 28th May:
+
+9) Week commencing 4th June:

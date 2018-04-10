@@ -29,11 +29,11 @@ class HeronTraffic(Resource):
 
         output = {}
 
-        for model_class in models:
+        for model_class in self.models:
             #TODO: Figure out how to supply client connections objects?
             model = model_class()
             LOG.info("Running traffic prediction model %s for topology %s "
-                     "over %d%s", model.name, topo_i, duration, units)
-            ouput.update(model.predict_traffic(topo_id, duration))
+                     "over %d%s", model.name, topo_id, duration, units)
+            output.update(model.predict_traffic(topo_id, duration))
 
         return output

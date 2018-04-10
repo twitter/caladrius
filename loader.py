@@ -23,7 +23,7 @@ def get_class(class_path: str):
         AttributeError: If the module could be found but the specified class
                         name was not defined within it.
     """
-    LOG.debug("Loading class: %s", class_path)
+    LOG.info("Loading class: %s", class_path)
 
     module_path, class_name = class_path.rsplit(".", 1)
 

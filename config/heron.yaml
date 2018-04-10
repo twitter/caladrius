@@ -3,11 +3,16 @@
 # Paths to Python classes should be absolute to avoid import errors
 
 # Heron tracker service base URL
-heron.tracker.url: 'http://localhost:1234'
+heron.tracker.url: 'http://heron-tracker-new.prod.heron.service.{zone}.twitter.com/'
 
-# Address of external metrics database
-heron.metrics.database.url: 'http://localhost:1234'
+# The metrics client to use for Heron topologies
+heron.metrics.client: 'caladrius.metrics.heron.cuckoo.heron_cuckoo_client.HeronTwitterCuckooClient'
 
+# Config arguments for the heron metrics client
+heron.metrics.client.config: 
+    database.url: 'https://cuckoo-prod-{zone}.twitter.biz/'
+    default.zone: 'smf1'
+    
 # List of Heron traffic models
 model.traffic.heron:
     - 'caladrius.model.traffic.heron.dummy_traffic.DummyTrafficModel'
