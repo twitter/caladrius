@@ -376,7 +376,7 @@ correct. It is perfectly possible to have a downstream bolt connect back to an
 upstream bolt thereby forming a cycle. However, while possible, it is rare. But
 many Machine Learning algorithms incorporate feedback loops so we should avoid
 using DAG to describe topologies]. Many of the possible modelling techniques
-for topology performance involve analysing these graphs. Caladrius provides
+for topology performance involve analysing these graphs. Caladrius will provide
 a graph database interface where topology logical and physical plans can be
 uploaded and used for performance analysis. 
 
@@ -389,11 +389,22 @@ without having to reimplement the graph interface code.
 Caladrius will provide classes for accessing logical and physical plan
 information from the DSPS Information APIs and convert this via
 TinkerPop/Gremlin code into directed graph representations. It will also
-provide a `graph.prediction` interface for estimating properties of proposed
-physical plans.
+provide a graph prediction (see @sec:graph-prediction below) interface for
+estimating properties of proposed physical plans.
 
 Again the Graph Client implementations can be set via the configuration files
 along with implementation specific configuration options (see @sec:config).
+
+## Graph Prediction {#sec:graph-prediction}
+
+Certain metrics for DSPS's logical and physical plans are not provided by
+default. For example neither Storm nor Heron provide routing probabilities for
+inter-operator connections or other metrics needed to estimate tuple flow.
+However, these metrics can be inferred or predicted from metrics that are
+provided by these systems.
+
+Caladrius will provide a graph prediction interface for predicting any graph
+metrics required by its modelling systems.
 
 # Configuration Files {#sec:config}
 
@@ -421,8 +432,13 @@ a separate file, an example of the `config/heron.yaml` is shown below:
 # Heron tracker service base URL
 heron.tracker.url: 'http://localhost:1234'
 
-# Address of external metrics database
-heron.metrics.database.url: 'http://localhost:1234'
+# Metrics Client to use with Heron
+heron.metrics.client: 'caladrius.metrics.heron.cuckoo.cookoo_client.HeronCuckooClient'
+
+# Mertic client config options
+heron.metrics.client.config:
+    database.url: 'http://localhost:1234'
+    default.zone: 'smf2'
 
 # List of Heron traffic models
 model.traffic.heron:
@@ -446,25 +462,63 @@ configuration files and will be available at run time.
 # Planned work
 
 The design above represents a final vision for the Caladrius system. With
-limited time available certain features will need to be prioritised. Below is
-a plan for the implementation of a minimum viable test system:
+limited time available, certain features will need to be prioritised. The
+initial aim will be to get a minimum viable prototype (MVP) working with the
+Heron DSPS and Twitter's internal timeseries database (Cuckoo). 
+
+Graph creation and prediction methods for currently running and proposed
+topologies will be created and their predictions verified against data from
+running topologies. Then queuing theory models of the topology performance will
+be created and verified using an automated data gathering framework. The
+outline plan of work is shown below:
 
 1) Week commencing 9th April:
-    - Finish design document
-    - Complete Cuckoo and Heron TMaster metrics interfaces
+    - Finish design document and work plan.
+    - Create Cuckoo and Heron Topology Master metrics interfaces.
+    - Create TinkerPop Graph infrastructure for Caladrius
 
 2) Week commencing 16th April:
+    - Create Heron Tracker graph interface to convert logical and physical
+      plans returned by the Tracker into TinkerPop graphs.
+    - Create method for converting Heron packing plan Protocol buffer message
+      into logical and physical graphs.
 
 3) Week commencing 23rd April:
+    - Create graph prediction algorithm to calculate routing probability and
+      input output ratios for currently running graphs. 
+    - Create arrival rate prediction method for graphs of currently running
+      topologies using new input traffic.
+    - Validate arrival rate prediction 
 
 4) Week commencing 30th April:
+    - Create new stream grouping to allow prediction of routing behaviour for
+      a proposed plan.
+    - Test new routing probability and verify metrics are correct.
+    - Create validation and testing infrastructure to automate data gathering
+      of test topologies under various configurations (multiple update steps).
 
 5) Week commencing 7th May:
+    - Create graph prediction algorithm to calculate routing probability and
+      input output ratios for proposed plan graphs. 
+    - Create arrival rate prediction method for proposed plan graphs.
+    - Verify arrival rate prediction method.
 
 6) Week commencing 14th May:
+    - Create Queuing Theory models.
 
-7) Week commencing 21st May:
+7) Week commencing 21st May: 
+    - Test modelling accuracy using several different test topologies.
 
 8) Week commencing 28th May:
+    - Write up of system design and testing results
+    - Prepare internship presentation.
 
 9) Week commencing 4th June:
+    - Reserved for slippage of above plan.
+
+Further Work:
+    - Write up testing results into a paper for publication.
+    - Dynamic configuration of modelling system via YAML files
+    - Traffic prediction modelling
+    - Create command line client interface for `heron update` command
+    - Make Caladrius production ready
