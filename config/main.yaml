@@ -1,7 +1,11 @@
 # Main Caladrius configuration file
 
 # Base address for the API data store server
-api.datastore.address: 'localhost:8080'
+caladrius.api.datastore.address: 'localhost:8080'
+
+# Graph Database connection url
+caladrius.graph.db.url: 'localhost:8182'
+
 
 
 

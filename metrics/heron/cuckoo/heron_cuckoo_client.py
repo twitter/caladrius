@@ -396,8 +396,8 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
         of the specified component of the specified topology. The start and end
         times for the window over which to gather metrics can be specified.
 
-        NOTE: This is not (yet) a default metric supplied by Heron so a custom
-        metric class must be used in your topology to provide this.
+        *NOTE*: This is not (yet) a default metric supplied by Heron so a
+        custom metric class must be used in your topology to provide this.
 
         Arguments:
             topo_name (str):    The topology identification string.

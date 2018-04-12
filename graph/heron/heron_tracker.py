@@ -4,16 +4,14 @@ https://twitter.github.io/heron/docs/operators/heron-tracker-api/
 """
 import logging
 
-from typing import Dict, Union
+from typing import List, Dict, Union
 
 import requests
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-HERON_TRACKER_URL: str = "http://heron-tracker-new.prod.heron.service.smf1.twitter.com"
-
-def get_logical_plan(cluster: str, environ: str, topology: str
-                    ) -> Dict[str, Union[int, str]]:
+def get_logical_plan(tracker_url: str, cluster: str, environ: str,
+                     topology: str) -> Dict[str, Union[int, str]]:
     """ Get the logical plan dictionary from the heron tracker api.
 
     Arguments:
@@ -26,7 +24,7 @@ def get_logical_plan(cluster: str, environ: str, topology: str
         A dictionary containing details of the spouts and bolts.
     """
 
-    logical_url = HERON_TRACKER_URL + "/topologies/logicalplan"
+    logical_url: str = tracker_url + "/topologies/logicalplan"
 
     response: requests.Response = requests.get(logical_url,
                                                params={"cluster" : cluster,
@@ -39,8 +37,8 @@ def get_logical_plan(cluster: str, environ: str, topology: str
 
     return response.json()["result"]
 
-def get_physical_plan(cluster: str, environ: str, topology: str
-                     ) -> Dict[str, Union[int, str]]:
+def get_physical_plan(tracker_url: str, cluster: str, environ: str,
+                      topology: str) -> Dict[str, Union[int, str]]:
     """ Get the logical plan dictionary from the heron tracker api.
 
     Arguments:
@@ -54,7 +52,7 @@ def get_physical_plan(cluster: str, environ: str, topology: str
         for the specified topology.
     """
 
-    physical_url = HERON_TRACKER_URL + "/topologies/physicalplan"
+    physical_url = tracker_url + "/topologies/physicalplan"
 
     response: requests.Response = requests.get(physical_url,
                                                params={"cluster" : cluster,
@@ -66,3 +64,23 @@ def get_physical_plan(cluster: str, environ: str, topology: str
     LOG.info("Fetched physical plan for topology: %s", topology)
 
     return response.json()["result"]
+
+def parse_instance_name(instance_name: str):
+    """ Parses the instance name string returned by the Heron Tracker API into
+    a dictionary with instance information.
+
+    Arguments:
+        instance_name (str): Instance name string in the form:
+                             container_<container_num>_<component>_<task_id>
+
+    Returns:
+        A dictionary with the following keys:
+            container : The container id as a integer
+            component : The component name string
+            task_id : The instances task id as an integer
+    """
+
+    parts: List[str] = instance_name.split("_")
+
+    return {"container" : int(parts[1]), "component" : parts[2],
+            "task_id" : int(parts[3])}
