@@ -3,7 +3,7 @@ import logging
 from caladrius.logs import get_top_level_logger
 from caladrius.graph.heron.heron_graph_builder import HeronGraphBuilder
 
-LOG: logging.Logger = get_top_level_logger(debug=True)
+#LOG: logging.Logger = get_top_level_logger(debug=True)
 
 CONFIG: dict = {
     "heron.tracker.url" :
@@ -13,4 +13,4 @@ CONFIG: dict = {
 
 HGB: HeronGraphBuilder = HeronGraphBuilder(CONFIG)
 
-HGB.build_topology_graph(
+HGB.build_topology_graph("ossWordCount3", "test1", "smf1", "test")

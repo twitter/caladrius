@@ -6,7 +6,7 @@ import logging
 
 from typing import List, Dict, Union
 
-from gremlin_python.structure.graph import Graph
+from gremlin_python.structure.graph import Graph, Vertex
 from gremlin_python.driver.driver_remote_connection \
         import DriverRemoteConnection
 
@@ -26,16 +26,11 @@ class HeronGraphBuilder(object):
         self.graph_traversal = self.graph.traversal().withRemote(
             DriverRemoteConnection(f"ws://{self.graph_db_url}/gremlin", 'g'))
 
-    def build_topology_graph(self, topology_id: str, cluster: str,
-                             environ: str):
+    def build_topology_graph(self, topology_id: str, topology_ref: str,
+                             cluster: str, environ: str):
 
         LOG.info("Building topology %s from cluster %s, environ %s",
                  topology_id, cluster, environ)
-
-        # Create the reference for this topology graph so it can be
-        # distinguished from other layouts for this topology
-        # TODO: Figure out how to do the referencing
-        topology_ref: str = "test"
 
         logical_plan: Dict[str, Union[str, int]] = \
                 get_logical_plan(self.tracker_url, cluster, environ,
@@ -44,6 +39,8 @@ class HeronGraphBuilder(object):
         physical_plan: Dict[str, Union[str, int]] = \
                 get_physical_plan(self.tracker_url, cluster, environ,
                                   topology_id)
+
+        LOG.info("Creating stream managers vertices")
 
         # Create the stream manager vertices
         for stream_manager in physical_plan["stmgrs"].values():
@@ -60,6 +57,22 @@ class HeronGraphBuilder(object):
              .property("topology_ref", topology_ref)
              .next())
 
+        # Connect all stream managers to each other
+        # TODO: Remove this step and create physical connections based on tuple
+        # flow only.
+        LOG.info("Creating connections between stream managers")
+        stream_managers = (self.graph_traversal.V().hasLabel("stream_manager")
+                           .has("topology_id", topology_id)
+                           .has("topology_ref", topology_ref).toList())
+
+        for strmg in stream_managers:
+            for other_strmg in [x for x in stream_managers if x != strmg]:
+                (self.graph_traversal.V(strmg)
+                 .addE("physically_connected").to(other_strmg).next())
+                (self.graph_traversal.V(other_strmg)
+                 .addE("physically_connected").to(strmg).next())
+
+
         # Create the spouts
         physical_spouts: Dict[str, List[str]] = physical_plan["spouts"]
 
@@ -73,32 +86,38 @@ class HeronGraphBuilder(object):
 
                 LOG.debug("Creating vertex for instance: %s", instance_name)
 
-                stream_manager: str = \
+                stream_manager_id: str = \
                     physical_plan["instances"][instance_name]["stmgrId"]
 
                 spout = (self.graph_traversal.addV("spout")
                          .property("container", instance["container"])
                          .property("task_id", instance["task_id"])
                          .property("component", spout_name)
-                         .property("stream_manager", stream_manager)
+                         .property("stream_manager", stream_manager_id)
                          .property("spout_type", spout_data["spout_type"])
                          .property("spout_source", spout_data["spout_source"])
                          .property("topology_id", topology_id)
                          .property("topology_ref", topology_ref)
                          .next())
 
-                # Connect this spout to its stream manager
+                # Connect this spout to its stream manager in both directions
                 LOG.debug("Creating physical connection between instance: %s "
                           "and stream manager: %s", instance_name,
-                          stream_manager)
+                          stream_manager_id)
 
-                #(self.graph_traversal.V()
-                #.hasLabel("stream_manager"))
+                strmg = (self.graph_traversal.V().hasLabel("stream_manager")
+                         .has("id", stream_manager_id)
+                         .has("topology_id", topology_id)
+                         .has("topology_ref", topology_ref)
+                         .next())
 
-        # Process the bolts and add logical connections
+                (self.graph_traversal.V(spout).addE("physically_connected")
+                 .to(strmg).next())
+
+        # Create all the bolt vertices
         physical_bolts: Dict[str, List[str]] = physical_plan["bolts"]
 
-        for bolt_name, bolt_data in logical_plan["bolts"].items():
+        for bolt_name in logical_plan["bolts"]:
             LOG.debug("Creating vertices for instances of bolt component: %s",
                       bolt_name)
             for instance_name in physical_bolts[bolt_name]:
@@ -108,14 +127,67 @@ class HeronGraphBuilder(object):
 
                 LOG.debug("Creating vertex for instance: %s", instance_name)
 
-                stream_manager: str = \
+                stream_manager_id: str = \
                     physical_plan["instances"][instance_name]["stmgrId"]
 
-                (self.graph_traversal.addV("bolt")
-                 .property("container", instance["container"])
-                 .property("task_id", instance["task_id"])
-                 .property("component", bolt_name)
-                 .property("stream_manager", stream_manager)
-                 .property("topology_id", topology_id)
-                 .property("topology_ref", topology_ref)
-                 .next())
+                bolt = (self.graph_traversal.addV("bolt")
+                        .property("container", instance["container"])
+                        .property("task_id", instance["task_id"])
+                        .property("component", bolt_name)
+                        .property("stream_manager", stream_manager_id)
+                        .property("topology_id", topology_id)
+                        .property("topology_ref", topology_ref)
+                        .next())
+
+                # Connect this bolt to its stream manager in both directions
+                LOG.debug("Creating physical connection between instance: %s "
+                          "and stream manager: %s", instance_name,
+                          stream_manager_id)
+
+                strmg: Vertex = (self.graph_traversal.V()
+                                 .hasLabel("stream_manager")
+                                 .has("id", stream_manager_id)
+                                 .has("topology_id", topology_id)
+                                 .has("topology_ref", topology_ref)
+                                 .next())
+
+                # TODO: Remove this step and create physical plan connections
+                # based on logical tuple flow
+                (self.graph_traversal.V(bolt).addE("physically_connected")
+                 .to(strmg).next())
+                (self.graph_traversal.V(strmg).addE("physically_connected")
+                 .to(bolt).next())
+
+        # Add all the logical connections between the topology's instances
+        LOG.info("Adding logical connections to topology %s instances",
+                 topology_id)
+
+        for bolt_name, bolt_data in logical_plan["bolts"].items():
+
+            LOG.debug("Adding logical connections for instances of bolt: %s",
+                      bolt_name)
+
+            # Get a list of all instance vertices for this bolt
+            destination_instances: List[Vertex] = (
+                self.graph_traversal.V()
+                .has("topology_id", topology_id)
+                .has("topology_ref", topology_ref)
+                .has("component", bolt_name)
+                .toList())
+
+            for incoming_stream in bolt_data["inputs"]:
+                source_instances: List[Vertex] = (
+                    self.graph_traversal.V()
+                    .has("topology_id", topology_id)
+                    .has("topology_ref", topology_ref)
+                    .has("component", incoming_stream["component_name"])
+                    .toList())
+
+                for destination in destination_instances:
+                    for source in source_instances:
+                        (self.graph_traversal.V(source)
+                         .addE("logically_connected")
+                         .property("stream_name",
+                                   incoming_stream["stream_name"])
+                         .property("grouping", incoming_stream["grouping"])
+                         .to(destination).next())

@@ -6,10 +6,10 @@ name = "pypi"
 [packages]
 pandas = "*"
 requests = "*"
-hug = "*"
 flask-restful = "*"
 pyyaml = "*"
 gremlinpython = "*"
+ipython = "*"
 
 [dev-packages]
 ipython = "*"
