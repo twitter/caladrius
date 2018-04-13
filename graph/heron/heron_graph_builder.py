@@ -26,19 +26,10 @@ class HeronGraphBuilder(object):
         self.graph_traversal = self.graph.traversal().withRemote(
             DriverRemoteConnection(f"ws://{self.graph_db_url}/gremlin", 'g'))
 
-    def build_topology_graph(self, topology_id: str, topology_ref: str,
-                             cluster: str, environ: str):
-
-        LOG.info("Building topology %s from cluster %s, environ %s",
-                 topology_id, cluster, environ)
-
-        logical_plan: Dict[str, Union[str, int]] = \
-                get_logical_plan(self.tracker_url, cluster, environ,
-                                 topology_id)
-
-        physical_plan: Dict[str, Union[str, int]] = \
-                get_physical_plan(self.tracker_url, cluster, environ,
-                                  topology_id)
+    def _create_stream_managers(self, topology_id: str, topology_ref: str,
+                                physical_plan: Dict[str, Union[str, int]],
+                                logical_plan: Dict[str, Union[str, int]]
+                               ) -> None:
 
         LOG.info("Creating stream managers vertices")
 
@@ -61,9 +52,11 @@ class HeronGraphBuilder(object):
         # TODO: Remove this step and create physical connections based on tuple
         # flow only.
         LOG.info("Creating connections between stream managers")
-        stream_managers = (self.graph_traversal.V().hasLabel("stream_manager")
-                           .has("topology_id", topology_id)
-                           .has("topology_ref", topology_ref).toList())
+        stream_managers: List[Vertex] = (self.graph_traversal.V()
+                                         .hasLabel("stream_manager")
+                                         .has("topology_id", topology_id)
+                                         .has("topology_ref", topology_ref)
+                                         .toList())
 
         for strmg in stream_managers:
             for other_strmg in [x for x in stream_managers if x != strmg]:
@@ -72,6 +65,9 @@ class HeronGraphBuilder(object):
                 (self.graph_traversal.V(other_strmg)
                  .addE("physically_connected").to(strmg).next())
 
+    def _create_spouts(self, topology_id: str, topology_ref: str,
+                       physical_plan: Dict[str, Union[str, int]],
+                       logical_plan: Dict[str, Union[str, int]]) -> None:
 
         # Create the spouts
         physical_spouts: Dict[str, List[str]] = physical_plan["spouts"]
@@ -105,7 +101,8 @@ class HeronGraphBuilder(object):
                           "and stream manager: %s", instance_name,
                           stream_manager_id)
 
-                strmg = (self.graph_traversal.V().hasLabel("stream_manager")
+                strmg = (self.graph_traversal.V()
+                         .hasLabel("stream_manager")
                          .has("id", stream_manager_id)
                          .has("topology_id", topology_id)
                          .has("topology_ref", topology_ref)
@@ -113,6 +110,10 @@ class HeronGraphBuilder(object):
 
                 (self.graph_traversal.V(spout).addE("physically_connected")
                  .to(strmg).next())
+
+    def _create_bolts(self, topology_id: str, topology_ref: str,
+                       physical_plan: Dict[str, Union[str, int]],
+                       logical_plan: Dict[str, Union[str, int]]) -> None:
 
         # Create all the bolt vertices
         physical_bolts: Dict[str, List[str]] = physical_plan["bolts"]
@@ -158,6 +159,10 @@ class HeronGraphBuilder(object):
                 (self.graph_traversal.V(strmg).addE("physically_connected")
                  .to(bolt).next())
 
+    def _create_logical_connections(self, topology_id: str, topology_ref: str,
+                                    logical_plan: Dict[str, Union[str, int]]
+                                   ) -> None:
+
         # Add all the logical connections between the topology's instances
         LOG.info("Adding logical connections to topology %s instances",
                  topology_id)
@@ -191,3 +196,30 @@ class HeronGraphBuilder(object):
                                    incoming_stream["stream_name"])
                          .property("grouping", incoming_stream["grouping"])
                          .to(destination).next())
+
+    def build_topology_graph(self, topology_id: str, topology_ref: str,
+                             cluster: str, environ: str):
+
+        LOG.info("Building topology %s from cluster %s, environ %s",
+                 topology_id, cluster, environ)
+
+        logical_plan: Dict[str, Union[str, int]] = \
+                get_logical_plan(self.tracker_url, cluster, environ,
+                                 topology_id)
+
+        physical_plan: Dict[str, Union[str, int]] = \
+                get_physical_plan(self.tracker_url, cluster, environ,
+                                  topology_id)
+
+
+        self._create_stream_managers(topology_id, topology_ref, physical_plan,
+                                     logical_plan)
+
+        self._create_spouts(topology_id, topology_ref, physical_plan,
+                            logical_plan)
+
+        self._create_bolts(topology_id, topology_ref, physical_plan,
+                           logical_plan)
+
+        self._create_logical_connections(topology_id, topology_ref,
+                                         logical_plan)
