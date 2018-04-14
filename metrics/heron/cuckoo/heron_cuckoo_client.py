@@ -15,7 +15,16 @@ from caladrius.metrics.heron.heron_metrics_client import HeronMetricsClient
 LOG: logging.Logger = logging.getLogger(__name__)
 
 def parse_metric_details(details: Dict[str, List[str]]) -> Dict[str, Any]:
-    """ Helper method for extracting details from metric name strings. """
+    """ Helper method for extracting details from metric name strings.
+
+    Arguments:
+        details (dict): dictionary of metric details returned by the cuckoo
+                        API
+
+    Returns:
+        A dictionary with the following keys: "container", "component", "task",
+        "source_component".
+    """
 
     ref_list: List[str] = details["sources"][0].split("/")
     component: str = ref_list[1]
@@ -44,6 +53,8 @@ def parse_metric_details(details: Dict[str, List[str]]) -> Dict[str, Any]:
     return details
 
 class HeronTwitterCuckooClient(HeronMetricsClient):
+    """ Class for extracting heron metrics from the Cuckoo timeseries database.
+    """
 
     def __init__(self, config: Dict[str, Union[str, int, float]],
                  client_name: str) -> None:

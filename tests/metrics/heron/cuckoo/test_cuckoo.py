@@ -6,3 +6,5 @@ config = {"database.url": 'https://cuckoo-prod-{zone}.twitter.biz/',
 
 
 cuckoo = HeronTwitterCuckooClient(config, "Infra-Caladrius")
+
+splitter_service_times = cuckoo.get_service_times("ossWordCount3", "splitter")

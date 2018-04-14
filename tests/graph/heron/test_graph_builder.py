@@ -3,7 +3,7 @@ import logging
 from caladrius.logs import get_top_level_logger
 from caladrius.graph.heron.heron_graph_builder import HeronGraphBuilder
 
-#LOG: logging.Logger = get_top_level_logger(debug=True)
+LOG: logging.Logger = get_top_level_logger(debug=True)
 
 CONFIG: dict = {
     "heron.tracker.url" :

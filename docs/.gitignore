@@ -1,2 +1,5 @@
 *.pdf
 *.html
+
+# Ignore Sphinx build directory
+/build*
