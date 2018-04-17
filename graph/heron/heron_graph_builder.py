@@ -12,7 +12,7 @@ from gremlin_python.structure.graph import Graph, Vertex, Edge
 from gremlin_python.driver.driver_remote_connection \
         import DriverRemoteConnection
 
-from caladrius.graph.heron.heron_tracker \
+from caladrius.common.heron.tracker \
         import get_logical_plan, get_physical_plan, parse_instance_name
 
 LOG: logging.Logger = logging.getLogger(__name__)
