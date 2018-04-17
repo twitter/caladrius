@@ -7,7 +7,8 @@ import logging
 from typing import List, Dict, Union
 
 from gremlin_python.process.traversal import P
-from gremlin_python.structure.graph import Graph, Vertex
+from gremlin_python.process.graph_traversal import __
+from gremlin_python.structure.graph import Graph, Vertex, Edge
 from gremlin_python.driver.driver_remote_connection \
         import DriverRemoteConnection
 
@@ -192,29 +193,98 @@ class HeronGraphBuilder(object):
                          .property("grouping", incoming_stream["grouping"])
                          .to(destination).next())
 
-    def _create_physical_connections(self, topology_id: str, topology_ref: str,
-                                     physical_plan: Dict[str, Union[str, int]],
-                                     logical_plan: Dict[str, Union[str, int]]
-                                    ) -> None:
+    def _create_physical_connections(self, topology_id: str,
+                                     topology_ref: str) -> None:
+
+        LOG.info("Creating physical connections for topology: %s, reference: "
+                 "%s", topology_id, topology_ref)
 
         # First get all logically connected pairs
-        logical_pairs: List[Dict[str, Vertex]] = (
+        logical_pairs: List[Dict[str, Union[Vertex, Edge]]] = (
             self.graph_traversal.V()
             .has("topology_id", topology_id)
             .has("topology_ref", topology_ref)
             .hasLabel(P.within("bolt", "spout")).as_("source")
-            .out("logically_connected").as_("destination")
-            .select("source", "destination")
+            .outE("logically_connected").as_("l_edge")
+            .inV().as_("destination")
+            .select("source", "l_edge", "destination")
             .toList())
+
+        LOG.debug("Processing %d logical connections", len(logical_pairs))
 
         for pair in logical_pairs:
             source = pair["source"]
             destination = pair["destination"]
+            logical_edge = pair["l_edge"]
 
-            # TODO: Find paths by checking if they share state managers
+            # Are these instances within the same container
+            # TODO: There is probably a better Gremlin query to do this
+            # automatically
+            source_container: Vertex = (self.graph_traversal.V(source)
+                                        .out("is_within")
+                                        .hasLabel("container")
+                                        .next())
 
-            # TODO: Add physical connections (using coalesce to first check if
-            # the connection exists) along the path.
+            destination_container: Vertex = (self.graph_traversal
+                                             .V(destination)
+                                             .out("is_within")
+                                             .hasLabel("container")
+                                             .next())
+
+            # Get the source stream manager, which will be the start of the
+            # physical connection path
+            source_strmg: Vertex = (self.graph_traversal.V(source_container)
+                                    .in_("is_within")
+                                    .hasLabel("stream_manager")
+                                    .next())
+
+            # Connect the source instance to its stream manager, checking first
+            # if the connection already exists
+            (self.graph_traversal.V(source)
+             .coalesce(__.out("physically_connected").is_(source_strmg),
+                       __.addE("physically_connected").to(source_strmg))
+             .next())
+
+            if source_container == destination_container:
+
+                # If the source and destination instances are in the same
+                # container then they share the same stream manager so just use
+                # the source stream manager found above. Connect the source
+                # stream manager to the destination instance
+
+                (self.graph_traversal.V(source_strmg)
+                 .coalesce(__.out("physically_connected").is_(destination),
+                           __.addE("physically_connected").to(destination))
+                 .next())
+
+                # Set the logical edge for this pair to "local"
+                (self.graph_traversal.E(logical_edge)
+                 .property("type", "local").next())
+
+            else:
+
+                # Get the share stream manager for the destination instance
+                destination_strmg: Vertex = (self.graph_traversal
+                                             .V(destination_container)
+                                             .in_("is_within")
+                                             .hasLabel("stream_manager")
+                                             .next())
+
+                # Connect the two stream managers (if they aren't already)
+                (self.graph_traversal.V(source_strmg)
+                 .coalesce(
+                     __.out("physically_connected").is_(destination_strmg),
+                     __.addE("physically_connected").to(destination_strmg))
+                 .next())
+
+                (self.graph_traversal.V(destination_strmg)
+                 .coalesce(__.out("physically_connected").is_(destination),
+                           __.addE("physically_connected").to(destination))
+                 .next())
+
+                # Set the logical edge for this pair to "remote"
+                (self.graph_traversal.E(logical_edge)
+                 .property("type", "remote").next())
 
     def build_topology_graph(self, topology_id: str, topology_ref: str,
                              cluster: str, environ: str):
@@ -241,3 +311,5 @@ class HeronGraphBuilder(object):
 
         self._create_logical_connections(topology_id, topology_ref,
                                          logical_plan)
+
+        self._create_physical_connections(topology_id, topology_ref)
