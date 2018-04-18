@@ -1,10 +1,9 @@
 from caladrius.metrics.heron.cuckoo.heron_cuckoo_client import \
-        HeronTwitterCuckooClient
+        HeronCuckooClient
 
-config = {"database.url": 'https://cuckoo-prod-{zone}.twitter.biz/',
-          "default.zone": 'smf1'}
+config = {"cuckoo.database.url": 'https://cuckoo-prod-smf1.twitter.biz'}
 
 
-cuckoo = HeronTwitterCuckooClient(config, "Infra-Caladrius")
+cuckoo = HeronCuckooClient(config, "Infra-Caladrius")
 
 splitter_service_times = cuckoo.get_service_times("ossWordCount3", "splitter")

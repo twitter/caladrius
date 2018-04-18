@@ -14,6 +14,8 @@ from caladrius.metrics.heron.heron_metrics_client import HeronMetricsClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+#pylint: disable=too-many-arguments
+
 def parse_metric_details(details: Dict[str, List[str]]) -> Dict[str, Any]:
     """ Helper method for extracting details from metric name strings.
 
@@ -52,7 +54,7 @@ def parse_metric_details(details: Dict[str, List[str]]) -> Dict[str, Any]:
 
     return details
 
-class HeronTwitterCuckooClient(HeronMetricsClient):
+class HeronCuckooClient(HeronMetricsClient):
     """ Class for extracting heron metrics from the Cuckoo timeseries database.
     """
 
@@ -69,44 +71,17 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
         super().__init__(config)
 
         self.client_name: str = client_name
-        self.base_url: str = config["database.url"]
-        self.default_zone: str = config["default.zone"]
+        self.base_url: str = config["cuckoo.database.url"]
 
-    def get_base_url(self, zone: str = None) -> str:
-        """ Gets the base connection URL for the Cuckoo database, using the
-        zone argument if supplied. If not the system will use the default_zone
-        zone in the config object supplied to the constructor.
-
-        Arguments:
-            zone (str): Optional argument to change the data centre name from
-                        which to pull the service list from. Default to the
-                        "default.zone" key the config object supplied to the
-                        constructor.
-
-        Returns:
-            The base URL database address
-        """
-
-        if zone:
-            return self.base_url.format(zone=zone)
-
-        return self.base_url.format(zone=self.default_zone)
-
-    def get_services(self, zone: str = None) -> List[str]:
+    def get_services(self) -> List[str]:
         """ Gets a list of all service names contained within the Cuckoo
-        metrics database hosted in the supplied zone.
-
-        Arguments:
-            zone (str): Optional argument to change the data centre name from
-                        which to pull the service list from. Default to the
-                        "default.zone" key the config object supplied to the
-                        constructor.
+        metrics database.
 
         Returns:
             A list of service name strings.
         """
 
-        url: str = self.get_base_url(zone) + "services"
+        url: str = self.base_url + "/services"
 
         response: requests.Response = requests.get(url)
 
@@ -114,41 +89,34 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
 
         return response.json()
 
-    def get_heron_topology_names(self, zone: str = None) -> List[str]:
-        """ Gets a list of all heron service (topology) names contained within the
-        Cuckoo metrics database hosted in the supplied zone.
-
-        Arguments:
-            zone (str): The data centre name to pull the heron service list from.
+    def get_heron_topology_names(self) -> List[str]:
+        """ Gets a list of all heron service (topology) names contained within
+        the Cuckoo metrics database.
 
         Returns:
             A list of heron service (topology) name strings.
         """
 
-        services: List[str] = self.get_services(zone)
+        services: List[str] = self.get_services()
 
         heron_services: List[str] = [service for service in services
                                      if "heron" in service]
 
         return heron_services
 
-    def get_sources(self, service: str, zone: str = None) -> List[str]:
+    def get_sources(self, service: str) -> List[str]:
         """ Gets a list of all source names for the supplied service, contained
-        within the Cuckoo metrics database hosted in the supplied (or default)
-        zone.
+        within the Cuckoo metrics database.
 
         Arguments:
             service (str):  The name of the service whose sources are to be
                             listed.
-            zone (str): Optionally you can supply the data centre name to pull
-                        the service list from. If not supplied then the default
-                        zone from the config object file will be used.
 
         Returns:
             A list of source name strings.
         """
 
-        url: str = self.get_base_url(zone) + "sources"
+        url: str = self.base_url + "/sources"
 
         response: requests.Response = requests.get(
             url, params={"service" : service})
@@ -157,8 +125,7 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
 
         return response.json()
 
-    def get_metrics(self, service: str, source: str,
-                    zone: str = None) -> List[str]:
+    def get_metrics(self, service: str, source: str) -> List[str]:
         """ Gets a list of all metrics names for the supplied service and
         source, contained within the Cuckoo metrics database hosted in the
         supplied (or default) zone.
@@ -166,15 +133,12 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
         Arguments:
             service (str):  The name of the service where the source is running.
             source (str): The name of the source whose metrics are to be listed.
-            zone (str): Optionally you can supply the data centre name to pull
-                        the service list from. If not supplied then the default
-                        zone from the config object file will be used.
 
         Returns:
             A list of metric name strings.
         """
 
-        url: str = self.get_base_url(zone) + "metrics"
+        url: str = self.base_url + "/metrics"
 
         response: requests.Response = requests.get(url,
                                                    params={"service" : service,
@@ -185,7 +149,7 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
         return response.json()
 
     def query(self, query_str: str, query_name: str, granularity: str,
-              start: int = None, end: int = None, zone: str = None)  -> dict:
+              start: int = None, end: int = None)  -> dict:
         """ Run the supplied query against the cuckoo database.
 
         Arguments:
@@ -205,9 +169,6 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
                         (seconds since epoch). This should not be supplied
                         without a corresponding start time. If it is, it will
                         be ignored.
-            zone (str): Optional data centre zone name. If not supplied the
-                        default zone, as defined in the config object, will be
-                        used.
 
         Returns:
             A dictionary parsed from the JSON string returned by the get
@@ -221,7 +182,7 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
                             successfully. This will usually happen if there is
                             a syntax error with the query string.
         """
-        url: str = self.get_base_url(zone) + "query"
+        url: str = self.base_url + "/query"
 
         payload: Dict[str, str] = {"query" : query_str,
                                    "client_source" : self.client_name,
@@ -259,7 +220,7 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
 
     def get_service_times(self, topo_name: str, component_name: str,
                           granularity: str = "m", start: int = None,
-                          end: int = None, zone: str = None) -> pd.DataFrame:
+                          end: int = None) -> pd.DataFrame:
         """ Gets the service times, as a timeseries, for every instance of the
         specified component of the specified topology. The start and end times
         for the window over which to gather metrics can be specified.
@@ -282,9 +243,6 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
                         (seconds since epoch). This should not be supplied
                         without a corresponding start time. If it is, it will
                         be ignored.
-            zone (str): Optional data centre zone name. If not supplied the
-                        default zone, as defined in the config object, will be
-                        used.
 
         Returns:
             A pandas DataFrame containing the service time measurements as a
@@ -309,8 +267,7 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
 
         json_response: requests.Response = self.query(query_str,
                                                       "execute latency",
-                                                      granularity, start, end,
-                                                      zone)
+                                                      granularity, start, end)
 
         output: List[Dict[str, Any]] = []
 
@@ -331,7 +288,7 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
 
     def get_execute_count(self, topo_name: str, component_name: str,
                           granularity: str = "m", start: int = None,
-                          end: int = None, zone: str = None) -> pd.DataFrame:
+                          end: int = None) -> pd.DataFrame:
         """ Gets the execution counts, as a timeseries, for every instance of
         the specified component of the specified topology. The start and end
         times for the window over which to gather metrics can be specified.
@@ -354,9 +311,6 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
                         (seconds since epoch). This should not be supplied
                         without a corresponding start time. If it is, it will
                         be ignored.
-            zone (str): Optional data centre zone name. If not supplied the
-                        default zone, as defined in the config object, will be
-                        used.
 
         Returns:
             A pandas DataFrame containing the execution count measurements as a
@@ -380,8 +334,7 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
 
         json_response: requests.Response = self.query(query_str,
                                                       "execute count",
-                                                      granularity, start, end,
-                                                      zone)
+                                                      granularity, start, end)
 
         output: List[Dict[str, Any]] = []
 
@@ -402,7 +355,7 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
 
     def get_received_count(self, topo_name: str, component_name: str,
                            granularity: str = "m", start: int = None,
-                           end: int = None, zone: str = None) -> pd.DataFrame:
+                           end: int = None) -> pd.DataFrame:
         """ Gets the tuple received counts, as a timeseries, for every instance
         of the specified component of the specified topology. The start and end
         times for the window over which to gather metrics can be specified.
@@ -428,9 +381,6 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
                         (seconds since epoch). This should not be supplied
                         without a corresponding start time. If it is, it will
                         be ignored.
-            zone (str): Optional data centre zone name. If not supplied the
-                        default zone, as defined in the config object, will be
-                        used.
 
         Returns:
             A pandas DataFrame containing the execution count measurements as a
@@ -458,8 +408,7 @@ class HeronTwitterCuckooClient(HeronMetricsClient):
 
         json_response: requests.Response = self.query(query_str,
                                                       "received counts",
-                                                      granularity,
-                                                      start, end, zone)
+                                                      granularity, start, end)
 
         output: List[Dict[str, Any]] = []
 
