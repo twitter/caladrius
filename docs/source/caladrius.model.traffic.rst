@@ -1,6 +1,13 @@
 caladrius.model.traffic package
 ===============================
 
+Subpackages
+-----------
+
+.. toctree::
+
+    caladrius.model.traffic.heron
+
 Submodules
 ----------
 

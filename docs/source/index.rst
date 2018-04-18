@@ -1,16 +1,12 @@
-.. caladrius documentation master file, created by
-   sphinx-quickstart on Fri Apr 13 13:31:20 2018.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+Caladrius
+=========
 
-Welcome to caladrius's documentation!
-=====================================
+Caladrius is a performance modelling service for Distributed Stream Processing
+Systems (DSPS) such as Apache Heron_ and Apache Storm_.
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
-
-
 
 Indices and tables
 ==================
@@ -18,3 +14,6 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+
+.. _Heron: https://apache.github.io/incubator-heron/
+.. _Storm: http://storm.apache.org/

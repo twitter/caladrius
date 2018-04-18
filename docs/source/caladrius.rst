@@ -7,6 +7,7 @@ Subpackages
 .. toctree::
 
     caladrius.api
+    caladrius.common
     caladrius.graph
     caladrius.metrics
     caladrius.model
