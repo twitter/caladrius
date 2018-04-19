@@ -10,7 +10,7 @@ import requests
 
 import pandas as pd
 
-from caladrius.metrics.heron.heron_metrics_client import HeronMetricsClient
+from caladrius.metrics.heron.client import HeronMetricsClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -218,19 +218,16 @@ class HeronCuckooClient(HeronMetricsClient):
         return json_response
 
 
-    def get_service_times(self, topo_name: str, component_name: str,
-                          granularity: str = "m", start: int = None,
-                          end: int = None) -> pd.DataFrame:
-        """ Gets the service times, as a timeseries, for every instance of the
-        specified component of the specified topology. The start and end times
-        for the window over which to gather metrics can be specified.
+    def get_service_times(self, topology_id: str, start: int = None,
+                          end: int = None, granularity: str = "m"
+                         ) -> pd.DataFrame:
+        """ Gets the service times, as a timeseries, for every instance of
+        every bolt component of the specified topology. The start and end times
+        for the window over which to gather metrics, as well as the granularity
+        of the time series can also be specified.
 
         Arguments:
-            topo_name (str):    The topology identification string.
-            component_name (str):   The name of the component whose metrics are
-                                    required.
-            granularity (str):  The time granularity for this query, can be one
-                                of "h", "m", "s". Defaults to "m".
+            topology_id (str):    The topology identification string.
             start (int):    Optional start time for the time period the query
                             is run against. This should be UNIX time integer
                             (seconds since epoch). If not supplied then the
@@ -243,6 +240,8 @@ class HeronCuckooClient(HeronMetricsClient):
                         (seconds since epoch). This should not be supplied
                         without a corresponding start time. If it is, it will
                         be ignored.
+            granularity (str):  Optional time granularity for this query, can
+                                be one of "h", "m", "s". Defaults to "m".
 
         Returns:
             A pandas DataFrame containing the service time measurements as a
@@ -260,7 +259,7 @@ class HeronCuckooClient(HeronMetricsClient):
                 latency_ms: The execute latency measurement in milliseconds.
         """
 
-        query_str: str = (f"ts(avg, heron/{topo_name}, /{component_name}/*, "
+        query_str: str = (f"ts(avg, heron/{topology_id}, /*/*, "
                           f"__execute-latency/*/*)")
 
         LOG.debug("Querying for execute latency using query: %s", query_str)
@@ -272,21 +271,29 @@ class HeronCuckooClient(HeronMetricsClient):
         output: List[Dict[str, Any]] = []
 
         for instance in json_response["timeseries"]:
-            details: Dict[str, Any] = parse_metric_details(instance["source"])
-            for entry in instance["data"]:
-                row: Dict[str, Any] = {
-                    "timestamp" : dt.datetime.utcfromtimestamp(entry[0]),
-                    "component" : details["component"],
-                    "task" : details["task"],
-                    "container" : details["container"],
-                    "source_component" : details["source_component"],
-                    "stream" : details["stream"],
-                    "latency_ms" : entry[1] / 1000}
-                output.append(row)
+
+            # Ignore returned values from the system components such as
+            # "__stmgr__" as they do not have execute-latency stats
+            if "__" in instance["source"]["sources"][0]:
+                continue
+            else:
+                details: Dict[str, Any] = \
+                    parse_metric_details(instance["source"])
+
+                for entry in instance["data"]:
+                    row: Dict[str, Any] = {
+                        "timestamp" : dt.datetime.utcfromtimestamp(entry[0]),
+                        "component" : details["component"],
+                        "task" : details["task"],
+                        "container" : details["container"],
+                        "source_component" : details["source_component"],
+                        "stream" : details["stream"],
+                        "latency_ms" : entry[1] / 1000}
+                    output.append(row)
 
         return pd.DataFrame(output)
 
-    def get_execute_count(self, topo_name: str, component_name: str,
+    def get_execute_count(self, topology_id: str, component_name: str,
                           granularity: str = "m", start: int = None,
                           end: int = None) -> pd.DataFrame:
         """ Gets the execution counts, as a timeseries, for every instance of
@@ -294,7 +301,7 @@ class HeronCuckooClient(HeronMetricsClient):
         times for the window over which to gather metrics can be specified.
 
         Arguments:
-            topo_name (str):    The topology identification string.
+            topology_id (str):    The topology identification string.
             component_name (str):   The name of the component whose metrics are
                                     required.
             granularity (str):  The time granularity for this query, can be one
@@ -327,7 +334,7 @@ class HeronCuckooClient(HeronMetricsClient):
                         that lead to this metric came from.
                 execute_count:  The execution count for this instance.
         """
-        query_str: str = (f"ts(sum, heron/{topo_name}, /{component_name}/*, "
+        query_str: str = (f"ts(sum, heron/{topology_id}, /{component_name}/*, "
                           f"__execute-count/*/*)")
 
         LOG.debug("Querying for execute count using query: %s", query_str)
@@ -353,7 +360,7 @@ class HeronCuckooClient(HeronMetricsClient):
 
         return pd.DataFrame(output)
 
-    def get_received_count(self, topo_name: str, component_name: str,
+    def get_received_count(self, topology_id: str, component_name: str,
                            granularity: str = "m", start: int = None,
                            end: int = None) -> pd.DataFrame:
         """ Gets the tuple received counts, as a timeseries, for every instance
@@ -364,7 +371,7 @@ class HeronCuckooClient(HeronMetricsClient):
         custom metric class must be used in your topology to provide this.
 
         Arguments:
-            topo_name (str):    The topology identification string.
+            topology_id (str):    The topology identification string.
             component_name (str):   The name of the component whose metrics are
                                     required.
             granularity (str):  The time granularity for this query, can be one
@@ -401,7 +408,7 @@ class HeronCuckooClient(HeronMetricsClient):
                 received_count:  The tuples received count for this instance.
         """
 
-        query_str: str = (f"ts(heron/{topo_name}, /{component_name}/*, "
+        query_str: str = (f"ts(heron/{topology_id}, /{component_name}/*, "
                           f"received-count/*/*/*)")
 
         LOG.debug("Querying for receive count using query: %s", query_str)
