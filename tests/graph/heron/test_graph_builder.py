@@ -1,7 +1,8 @@
 import logging
+import sys
 
 from caladrius.logs import get_top_level_logger
-from caladrius.graph.heron.heron_graph_builder import HeronGraphBuilder
+from caladrius.graph.heron.builder import HeronGraphBuilder
 
 LOG: logging.Logger = get_top_level_logger(debug=True)
 
@@ -13,4 +14,4 @@ CONFIG: dict = {
 
 HGB: HeronGraphBuilder = HeronGraphBuilder(CONFIG)
 
-HGB.build_topology_graph("ossWordCount3", "test1", "smf1", "test")
+HGB.build_topology_graph(sys.argv[1], sys.argv[2], "smf1", "test")

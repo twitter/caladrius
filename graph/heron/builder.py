@@ -12,12 +12,13 @@ from gremlin_python.structure.graph import Graph, Vertex, Edge
 from gremlin_python.driver.driver_remote_connection \
         import DriverRemoteConnection
 
-from caladrius.common.heron.tracker \
-        import get_logical_plan, get_physical_plan, parse_instance_name
+from caladrius.common.heron import tracker
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
 class HeronGraphBuilder(object):
+    """ This class is responsible for constructing a graph representation of a
+    running Heron topology. """
 
     def __init__(self, config: dict) -> None:
         self.config = config
@@ -49,8 +50,6 @@ class HeronGraphBuilder(object):
                              .property("id", stream_manager["id"])
                              .property("host", stream_manager["host"])
                              .property("port", stream_manager["port"])
-                             .property("shell_port",
-                                       stream_manager["shell_port"])
                              .property("topology_id", topology_id)
                              .property("topology_ref", topology_ref)
                              .next())
@@ -84,7 +83,7 @@ class HeronGraphBuilder(object):
             for instance_name in physical_spouts[spout_name]:
 
                 instance: Dict[str, Union[str, int]] = \
-                        parse_instance_name(instance_name)
+                        tracker.parse_instance_name(instance_name)
 
                 LOG.debug("Creating vertex for instance: %s", instance_name)
 
@@ -114,7 +113,6 @@ class HeronGraphBuilder(object):
                     )
                  .next())
 
-
     def _create_bolts(self, topology_id: str, topology_ref: str,
                       physical_plan: Dict[str, Union[str, int]],
                       logical_plan: Dict[str, Union[str, int]]) -> None:
@@ -128,7 +126,7 @@ class HeronGraphBuilder(object):
             for instance_name in physical_bolts[bolt_name]:
 
                 instance: Dict[str, Union[str, int]] = \
-                        parse_instance_name(instance_name)
+                    tracker.parse_instance_name(instance_name)
 
                 LOG.debug("Creating vertex for bolt instance: %s",
                           instance_name)
@@ -293,12 +291,12 @@ class HeronGraphBuilder(object):
                  topology_id, cluster, environ)
 
         logical_plan: Dict[str, Union[str, int]] = \
-                get_logical_plan(self.tracker_url, cluster, environ,
-                                 topology_id)
+            tracker.get_logical_plan(self.tracker_url, cluster, environ,
+                                     topology_id)
 
         physical_plan: Dict[str, Union[str, int]] = \
-                get_physical_plan(self.tracker_url, cluster, environ,
-                                  topology_id)
+            tracker.get_physical_plan(self.tracker_url, cluster, environ,
+                                      topology_id)
 
 
         self._create_stream_managers(topology_id, topology_ref, physical_plan)

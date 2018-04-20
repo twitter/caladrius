@@ -251,10 +251,11 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return output
 
-    def get_component_emissions(self, topology_id: str, cluster: str,
-                                environ: str, component_name: str, start: int,
-                                end: int, logical_plan: Dict[str, Any] = None
-                               ) -> pd.DataFrame:
+    def get_component_emission_counts(self, topology_id: str, cluster: str,
+                                      environ: str, component_name: str,
+                                      start: int, end: int,
+                                      logical_plan: Dict[str, Any] = None
+                                     ) -> pd.DataFrame:
         """ Gets the emit counts, as a timeseries, for every instance of the
         specified component of the specified topology. The start and end times
         define the window over which to gather the metrics. The window duration
@@ -326,5 +327,62 @@ class HeronTMasterClient(HeronMetricsClient):
                 output = instance_tls_df
             else:
                 output = output.append(instance_tls_df, ignore_index=True)
+
+        return output
+
+    def get_emission_counts(self, topology_id: str, cluster: str, environ: str,
+                            start: int, end: int):
+        """ Gets the emit counts, as a timeseries, for every instance of the
+        of all the bolt components of the specified topology. The start and end
+        times define the window over which to gather the metrics. The window
+        duration should be less than 3 hours as this is the limit of what the
+        Topology master stores.
+
+        Arguments:
+            topology_id (str):    The topology identification string.
+            cluster (str):  The cluster the topology is running in.
+            environ (str):  The environment the topology is running in (eg.
+                            prod, devel, test, etc).
+            start (int):    Start time for the time period the query is run
+                            against. This should be a UTC POSIX time integer
+                            (seconds since epoch).
+            end (int):  End time for the time period the query is run against.
+                        This should be a UTC POSIX time integer (seconds since
+                        epoch).
+
+        Returns:
+            A pandas DataFrame containing the service time measurements as a
+            timeseries. Each row represents a measurement (aggregated over one
+            minuet) with the following columns:
+            timestamp:  The UTC timestamp for the metric.
+            component: The component this metric comes from.
+            task:   The instance ID number for the instance that the metric
+                    comes from.
+            container:  The ID for the container this metric comes from.
+            stream: The name of the incoming stream from which the tuples
+                    that lead to this metric came from.
+            emit-count: The emit count during the metric time period/
+        """
+
+        logical_plan: Dict[str, Any] = tracker.get_logical_plan(
+            self.tracker_url, cluster, environ, topology_id)
+
+        output: pd.DataFrame = None
+
+        components: List[str] = (list(logical_plan["spouts"].keys()) +
+                                 list(logical_plan["bolts"].keys()))
+
+        for component in components:
+
+            comp_emit_counts: pd.DataFrame = \
+                    self.get_component_emission_counts(topology_id, cluster,
+                                                       environ, component,
+                                                       start, end,
+                                                       logical_plan)
+
+            if output is None:
+                output = comp_emit_counts
+            else:
+                output = output.append(comp_emit_counts, ignore_index=True)
 
         return output
