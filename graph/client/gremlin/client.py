@@ -1,0 +1,55 @@
+""" This module contains classes and methods for connecting to and
+communicating with a Gremlin Server instance. """
+
+import logging
+
+from gremlin_python.structure.graph import Graph
+from gremlin_python.process.graph_traversal import __, GraphTraversalSource
+from gremlin_python.process.strategies import SubgraphStrategy
+from gremlin_python.driver.driver_remote_connection \
+        import DriverRemoteConnection
+
+from caladrius.graph.client.graph_client import GraphClient
+
+LOG: logging.Logger = logging.getLogger(__name__)
+
+class GremlinClient(GraphClient):
+    """ Graph client implementation for the TinkerPop Gremlin Server """
+
+    def __init__(self, config: dict) -> None:
+        super().__init__(config)
+        self.gremlin_server_url: str = self.config["gremlin.server.url"]
+
+        # Create remote graph traversal object
+        LOG.info("Connecting to graph database at: %s",
+                 self.gremlin_server_url)
+
+        self.graph: Graph = Graph()
+        self.graph_traversal: GraphTraversalSource = \
+            self.graph.traversal().withRemote(DriverRemoteConnection(
+                f"ws://{self.gremlin_server_url}/gremlin", 'g'))
+
+    def topology_subgraph(self, topology_id: str,
+                          topology_ref: str) -> GraphTraversalSource:
+        """ Gets a gremlin graph traversal source limited to the sub-graph of
+        vertices with the supplied topology ID and topology reference
+        properties.
+
+        Arguments:
+            topology_id (str):  The topology identification string.
+            topology_ref (str): The reference string for the version of the
+                                topology you want to sub-graph.
+
+        Returns:
+            A GraphTraversalSource instance linked to the desired sub-graph
+        """
+
+        LOG.info("Creating traversal source for topology %s subgraph with "
+                 "reference: %s", topology_id, topology_ref)
+
+        topo_graph_traversal: GraphTraversalSource = \
+            self.graph_traversal.withStrategies(
+                SubgraphStrategy(vertices=__.has("topology_ref", topology_ref)
+                                 .has("topology_id", topology_id)))
+
+        return topo_graph_traversal

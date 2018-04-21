@@ -2,14 +2,14 @@ import logging
 import sys
 
 from caladrius.logs import get_top_level_logger
-from caladrius.graph.heron.builder import HeronGraphBuilder
+from caladrius.graph.builder.heron.builder import HeronGraphBuilder
 
 LOG: logging.Logger = get_top_level_logger(debug=True)
 
 CONFIG: dict = {
     "heron.tracker.url" :
     'http://heron-tracker-new.prod.heron.service.smf1.twitter.com',
-    "caladrius.graph.db.url" : 'localhost:8182'
+    "gremlin.server.url" : 'localhost:8182'
     }
 
 HGB: HeronGraphBuilder = HeronGraphBuilder(CONFIG)

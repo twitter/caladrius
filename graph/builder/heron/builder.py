@@ -8,11 +8,10 @@ from typing import List, Dict, Union
 
 from gremlin_python.process.traversal import P
 from gremlin_python.process.graph_traversal import __
-from gremlin_python.structure.graph import Graph, Vertex, Edge
-from gremlin_python.driver.driver_remote_connection \
-        import DriverRemoteConnection
+from gremlin_python.structure.graph import Vertex, Edge
 
 from caladrius.common.heron import tracker
+from caladrius.graph.client.gremlin.client import GremlinClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -23,16 +22,7 @@ class HeronGraphBuilder(object):
     def __init__(self, config: dict) -> None:
         self.config = config
         self.tracker_url = config["heron.tracker.url"]
-        self.graph_db_url = config["caladrius.graph.db.url"]
-        self.connect()
-
-    def connect(self) -> None:
-
-        LOG.info("Connecting to graph database at: %s", self.graph_db_url)
-
-        self.graph = Graph()
-        self.graph_traversal = self.graph.traversal().withRemote(
-            DriverRemoteConnection(f"ws://{self.graph_db_url}/gremlin", 'g'))
+        self.graph_client: GremlinClient = GremlinClient(config)
 
     def _create_stream_managers(self, topology_id: str, topology_ref: str,
                                 physical_plan: Dict[str, Union[str, int]],
@@ -46,7 +36,8 @@ class HeronGraphBuilder(object):
             LOG.debug("Creating vertex for stream manager: %s",
                       stream_manager["id"])
 
-            strmg: Vertex = (self.graph_traversal.addV("stream_manager")
+            strmg: Vertex = (self.graph_client.graph_traversal
+                             .addV("stream_manager")
                              .property("id", stream_manager["id"])
                              .property("host", stream_manager["host"])
                              .property("port", stream_manager["port"])
@@ -59,7 +50,8 @@ class HeronGraphBuilder(object):
 
             LOG.debug("Creating vertex for container: %d", container)
 
-            cont: Vertex = (self.graph_traversal.addV("container")
+            cont: Vertex = (self.graph_client.graph_traversal
+                            .addV("container")
                             .property("id", container)
                             .property("topology_id", topology_id)
                             .property("topology_ref", topology_ref)
@@ -68,7 +60,8 @@ class HeronGraphBuilder(object):
             # Connect the stream manager to the container
             LOG.debug("Connecting stream manager %s to be within container %d",
                       stream_manager["id"], container)
-            (self.graph_traversal.V(strmg).addE("is_within").to(cont).next())
+            (self.graph_client.graph_traversal.V(strmg).addE("is_within")
+             .to(cont).next())
 
     def _create_spouts(self, topology_id: str, topology_ref: str,
                        physical_plan: Dict[str, Union[str, int]],
@@ -90,7 +83,8 @@ class HeronGraphBuilder(object):
                 stream_manager_id: str = \
                     physical_plan["instances"][instance_name]["stmgrId"]
 
-                spout: Vertex = (self.graph_traversal.addV("spout")
+                spout: Vertex = (self.graph_client.graph_traversal
+                                 .addV("spout")
                                  .property("container", instance["container"])
                                  .property("task_id", instance["task_id"])
                                  .property("component", spout_name)
@@ -104,8 +98,8 @@ class HeronGraphBuilder(object):
                                  .next())
 
                 # Connect the spout to its container vertex
-                (self.graph_traversal.V(spout).addE("is_within")
-                 .to(self.graph_traversal.V()
+                (self.graph_client.graph_traversal.V(spout).addE("is_within")
+                 .to(self.graph_client.graph_traversal.V()
                      .hasLabel("container")
                      .has("topology_id", topology_id)
                      .has("topology_ref", topology_ref)
@@ -134,7 +128,8 @@ class HeronGraphBuilder(object):
                 stream_manager_id: str = \
                     physical_plan["instances"][instance_name]["stmgrId"]
 
-                bolt: Vertex = (self.graph_traversal.addV("bolt")
+                bolt: Vertex = (self.graph_client.graph_traversal
+                                .addV("bolt")
                                 .property("container", instance["container"])
                                 .property("task_id", instance["task_id"])
                                 .property("component", bolt_name)
@@ -144,8 +139,8 @@ class HeronGraphBuilder(object):
                                 .next())
 
                 # Connect the bolt to its container vertex
-                (self.graph_traversal.V(bolt).addE("is_within")
-                 .to(self.graph_traversal.V()
+                (self.graph_client.graph_traversal.V(bolt).addE("is_within")
+                 .to(self.graph_client.graph_traversal.V()
                      .hasLabel("container")
                      .has("topology_id", topology_id)
                      .has("topology_ref", topology_ref)
@@ -168,7 +163,7 @@ class HeronGraphBuilder(object):
 
             # Get a list of all instance vertices for this bolt
             destination_instances: List[Vertex] = (
-                self.graph_traversal.V()
+                self.graph_client.graph_traversal.V()
                 .has("topology_id", topology_id)
                 .has("topology_ref", topology_ref)
                 .has("component", bolt_name)
@@ -176,7 +171,7 @@ class HeronGraphBuilder(object):
 
             for incoming_stream in bolt_data["inputs"]:
                 source_instances: List[Vertex] = (
-                    self.graph_traversal.V()
+                    self.graph_client.graph_traversal.V()
                     .has("topology_id", topology_id)
                     .has("topology_ref", topology_ref)
                     .has("component", incoming_stream["component_name"])
@@ -184,7 +179,7 @@ class HeronGraphBuilder(object):
 
                 for destination in destination_instances:
                     for source in source_instances:
-                        (self.graph_traversal.V(source)
+                        (self.graph_client.graph_traversal.V(source)
                          .addE("logically_connected")
                          .property("stream_name",
                                    incoming_stream["stream_name"])
@@ -199,7 +194,7 @@ class HeronGraphBuilder(object):
 
         # First get all logically connected pairs
         logical_pairs: List[Dict[str, Union[Vertex, Edge]]] = (
-            self.graph_traversal.V()
+            self.graph_client.graph_traversal.V()
             .has("topology_id", topology_id)
             .has("topology_ref", topology_ref)
             .hasLabel(P.within("bolt", "spout")).as_("source")
@@ -218,12 +213,13 @@ class HeronGraphBuilder(object):
             # Are these instances within the same container
             # TODO: There is probably a better Gremlin query to do this
             # automatically
-            source_container: Vertex = (self.graph_traversal.V(source)
+            source_container: Vertex = (self.graph_client.graph_traversal
+                                        .V(source)
                                         .out("is_within")
                                         .hasLabel("container")
                                         .next())
 
-            destination_container: Vertex = (self.graph_traversal
+            destination_container: Vertex = (self.graph_client.graph_traversal
                                              .V(destination)
                                              .out("is_within")
                                              .hasLabel("container")
@@ -231,14 +227,15 @@ class HeronGraphBuilder(object):
 
             # Get the source stream manager, which will be the start of the
             # physical connection path
-            source_strmg: Vertex = (self.graph_traversal.V(source_container)
+            source_strmg: Vertex = (self.graph_client.graph_traversal
+                                    .V(source_container)
                                     .in_("is_within")
                                     .hasLabel("stream_manager")
                                     .next())
 
             # Connect the source instance to its stream manager, checking first
             # if the connection already exists
-            (self.graph_traversal.V(source)
+            (self.graph_client.graph_traversal.V(source)
              .coalesce(__.out("physically_connected").is_(source_strmg),
                        __.addE("physically_connected").to(source_strmg))
              .next())
@@ -250,38 +247,38 @@ class HeronGraphBuilder(object):
                 # the source stream manager found above. Connect the source
                 # stream manager to the destination instance
 
-                (self.graph_traversal.V(source_strmg)
+                (self.graph_client.graph_traversal.V(source_strmg)
                  .coalesce(__.out("physically_connected").is_(destination),
                            __.addE("physically_connected").to(destination))
                  .next())
 
                 # Set the logical edge for this pair to "local"
-                (self.graph_traversal.E(logical_edge)
+                (self.graph_client.graph_traversal.E(logical_edge)
                  .property("type", "local").next())
 
             else:
 
                 # Get the share stream manager for the destination instance
-                destination_strmg: Vertex = (self.graph_traversal
+                destination_strmg: Vertex = (self.graph_client.graph_traversal
                                              .V(destination_container)
                                              .in_("is_within")
                                              .hasLabel("stream_manager")
                                              .next())
 
                 # Connect the two stream managers (if they aren't already)
-                (self.graph_traversal.V(source_strmg)
+                (self.graph_client.graph_traversal.V(source_strmg)
                  .coalesce(
                      __.out("physically_connected").is_(destination_strmg),
                      __.addE("physically_connected").to(destination_strmg))
                  .next())
 
-                (self.graph_traversal.V(destination_strmg)
+                (self.graph_client.graph_traversal.V(destination_strmg)
                  .coalesce(__.out("physically_connected").is_(destination),
                            __.addE("physically_connected").to(destination))
                  .next())
 
                 # Set the logical edge for this pair to "remote"
-                (self.graph_traversal.E(logical_edge)
+                (self.graph_client.graph_traversal.E(logical_edge)
                  .property("type", "remote").next())
 
     def build_topology_graph(self, topology_id: str, topology_ref: str,
