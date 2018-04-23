@@ -5,25 +5,20 @@ import logging
 
 from sys import stdout
 
-def get_top_level_logger(logfile: str = None,
-                         debug: bool = False) -> logging.Logger:
-    """ This will get a Logger instance configured for the topo level of the
-    program so will capture all output from Loggers within Caladrius. By
-    default this will pass the output to stdout however an optional output file
-    can be specified to preserve the logs. The dubug argument will set the log
-    level to DEBUG and will included line numbers and function name information
-    in the log output.
+def set_up_logging(logfile: str = None, debug: bool = False) -> None:
+    """ This will set up the root Python logger instance and by default will
+    attach a stream handler piping all output to stdout. However an optional
+    output filename can be specified to preserve the logs. The dubug argument
+    will set the log level to DEBUG and will included line numbers and function
+    name information in the log output.
 
     Arguments:
-        logfile (str):  Optional path to the output file for logs.
+        logfile (str):  Optional path to the output file for the logs.
         debug (bool):   Optional flag (default False) to include debug level
                         output.
-
-    Returns:
-        A logging.Logger instance configure for the top level of the system.
     """
 
-    top_log: logging.Logger = logging.getLogger("caladrius")
+    top_log: logging.Logger = logging.getLogger()
 
     if debug:
         top_log.setLevel(logging.DEBUG)
@@ -44,5 +39,3 @@ def get_top_level_logger(logfile: str = None,
         file_handler: logging.FileHandler = logging.FileHandler(logfile)
         file_handler.setFormatter(formatter)
         top_log.addHandler(file_handler)
-
-    return top_log

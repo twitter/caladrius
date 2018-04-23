@@ -1,10 +1,12 @@
 import logging
 import sys
 
-from caladrius.logs import get_top_level_logger
+from caladrius.logs import set_up_logging
 from caladrius.graph.builder.heron.builder import HeronGraphBuilder
 
-LOG: logging.Logger = get_top_level_logger(debug=True)
+LOG: logging.Logger = logging.getLogger(__name__)
+
+set_up_logging(debug=True)
 
 CONFIG: dict = {
     "heron.tracker.url" :
