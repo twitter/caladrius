@@ -16,7 +16,7 @@ LOG: logging.Logger = logging.getLogger(__name__)
 class GremlinClient(GraphClient):
     """ Graph client implementation for the TinkerPop Gremlin Server """
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, graph_name: str = "g") -> None:
         super().__init__(config)
         self.gremlin_server_url: str = self.config["gremlin.server.url"]
 
@@ -24,10 +24,16 @@ class GremlinClient(GraphClient):
         LOG.info("Connecting to graph database at: %s",
                  self.gremlin_server_url)
 
+        self.graph_name: str = graph_name
         self.graph: Graph = Graph()
+        self.connect()
+
+    def connect(self):
+        """ Creates (or refreshes) the remote connection to the gremlin server.
+        """
         self.graph_traversal: GraphTraversalSource = \
             self.graph.traversal().withRemote(DriverRemoteConnection(
-                f"ws://{self.gremlin_server_url}/gremlin", 'g'))
+                f"ws://{self.gremlin_server_url}/gremlin", self.graph_name))
 
     def topology_subgraph(self, topology_id: str,
                           topology_ref: str) -> GraphTraversalSource:

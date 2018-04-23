@@ -7,11 +7,13 @@ import logging
 from typing import List, Dict, Union
 
 from gremlin_python.process.traversal import P
-from gremlin_python.process.graph_traversal import __
+from gremlin_python.process.graph_traversal import __, GraphTraversalSource
 from gremlin_python.structure.graph import Vertex, Edge
 
 from caladrius.common.heron import tracker
 from caladrius.graph.client.gremlin.client import GremlinClient
+from caladrius.graph.builder.heron.routing_probability \
+    import set_shuffle_routing_probs
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -158,8 +160,8 @@ class HeronGraphBuilder(object):
 
         for bolt_name, bolt_data in logical_plan["bolts"].items():
 
-            LOG.debug("Adding logical connections for instances of bolt: %s",
-                      bolt_name)
+            LOG.debug("Adding logical connections for instances of "
+                      "destination bolt: %s", bolt_name)
 
             # Get a list of all instance vertices for this bolt
             destination_instances: List[Vertex] = (
@@ -281,8 +283,45 @@ class HeronGraphBuilder(object):
                 (self.graph_client.graph_traversal.E(logical_edge)
                  .property("type", "remote").next())
 
+    def _populate_graph(self, topology_id: str, topology_ref: str) -> None:
+
+        LOG.info("Populating topology %s reference %s physical graph with "
+                 "with metrics", topology_id, topology_ref)
+
+        topo_traversal: GraphTraversalSource = \
+            self.graph_client.topology_subgraph(topology_id, topology_ref)
+
+        set_shuffle_routing_probs(topo_traversal)
+
     def build_topology_graph(self, topology_id: str, topology_ref: str,
-                             cluster: str, environ: str):
+                             cluster: str, environ: str,
+                             physical_plan: Dict[str, Union[str, int]] = None):
+        """ This method will build the physical graph of the specified topology
+        in the caladrius graph database. It will attach the supplied reference
+        to all vertices of this topology physical graph. A physical plan
+        object can be supplied. If this is not supplied then the current
+        physical plan will be fetched from the configured Heron Tracker.
+
+        Arguments:
+            topology_id (str):  The topology identification string
+            topology_ref (str): The unique reference string for this topology
+                                physical graph.
+            cluster (str):  The cluster this topology is running in. This is
+                            passed to the Heron Tracker API.
+            environ (str):  The environment (PROD, DEVEL, TEST etc.) that this
+                            topology is running in. This is passed to the Heron
+                            Tracker API.
+            physical_plan (dict):   An option dictionary describing the
+                                    physical plan of the topology. This should
+                                    match the format of the physical plan
+                                    returned by the Heron tracker API. If not
+                                    supplied then the current physical plan
+                                    will be fetched from the Heron Tracker API.
+
+        Raises:
+            requests.HTTPError: If the Heron Tracker API returns a non-2XX
+                                status code.
+        """
 
         LOG.info("Building topology %s from cluster %s, environ %s",
                  topology_id, cluster, environ)
@@ -291,10 +330,13 @@ class HeronGraphBuilder(object):
             tracker.get_logical_plan(self.tracker_url, cluster, environ,
                                      topology_id)
 
-        physical_plan: Dict[str, Union[str, int]] = \
-            tracker.get_physical_plan(self.tracker_url, cluster, environ,
-                                      topology_id)
-
+        if not physical_plan:
+            LOG.info("Physical plan was not provided to build topology %s "
+                     "reference %s. Using physical plan from currently "
+                     "running topology", topology_id, topology_ref)
+            physical_plan: Dict[str, Union[str, int]] = \
+                tracker.get_physical_plan(self.tracker_url, cluster, environ,
+                                          topology_id)
 
         self._create_stream_managers(topology_id, topology_ref, physical_plan)
 
@@ -308,3 +350,5 @@ class HeronGraphBuilder(object):
                                          logical_plan)
 
         self._create_physical_connections(topology_id, topology_ref)
+
+        self._populate_graph(topology_id, topology_ref)

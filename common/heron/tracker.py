@@ -30,6 +30,8 @@ def get_logical_plan(tracker_url: str, cluster: str, environ: str,
         requests.HTTPError: If a non 200 status code is returned.
     """
 
+    LOG.info("Fetching logical plan for topology: %s", topology)
+
     logical_url: str = tracker_url + "/topologies/logicalplan"
 
     response: requests.Response = requests.get(logical_url,
@@ -37,9 +39,13 @@ def get_logical_plan(tracker_url: str, cluster: str, environ: str,
                                                        "environ" : environ,
                                                        "topology" : topology})
 
-    response.raise_for_status()
-
-    LOG.info("Fetched logical plan for topology: %s", topology)
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as err:
+        LOG.error("Logical plan request for topology: %s , cluster: %s, "
+                  "environment: %s failed with error code: %s", topology,
+                  cluster, environ, str(response.status_code))
+        raise err
 
     return response.json()["result"]
 
@@ -62,6 +68,8 @@ def get_physical_plan(tracker_url: str, cluster: str, environ: str,
         requests.HTTPError: If a non 200 status code is returned.
     """
 
+    LOG.info("Fetching physical plan for topology: %s", topology)
+
     physical_url: str = tracker_url + "/topologies/physicalplan"
 
     response: requests.Response = requests.get(physical_url,
@@ -69,9 +77,13 @@ def get_physical_plan(tracker_url: str, cluster: str, environ: str,
                                                        "environ" : environ,
                                                        "topology" : topology})
 
-    response.raise_for_status()
-
-    LOG.info("Fetched physical plan for topology: %s", topology)
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as err:
+        LOG.error("Physical plan request for topology: %s , cluster: %s, "
+                  "environment: %s failed with error code: %s", topology,
+                  cluster, environ, str(response.status_code))
+        raise err
 
     return response.json()["result"]
 
