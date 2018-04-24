@@ -5,6 +5,8 @@ import logging
 
 from sys import stdout
 
+LOG: logging.Logger = logging.getLogger(__name__)
+
 def set_up_logging(logfile: str = None, debug: bool = False) -> None:
     """ This will set up the root Python logger instance and by default will
     attach a stream handler piping all output to stdout. However an optional
@@ -18,6 +20,7 @@ def set_up_logging(logfile: str = None, debug: bool = False) -> None:
                         output.
     """
 
+    # Grab the root logger
     top_log: logging.Logger = logging.getLogger()
 
     if debug:
@@ -30,6 +33,10 @@ def set_up_logging(logfile: str = None, debug: bool = False) -> None:
         top_log.setLevel(logging.INFO)
         formatter = logging.Formatter(("{asctime} | {name} | {levelname} "
                                        "| {message}"), style='{')
+
+    if top_log.hasHandlers():
+        LOG.warning("Root Logger already has registered handlers. There may "
+                    "be duplicate output.")
 
     console_handler: logging.StreamHandler = logging.StreamHandler(stdout)
     console_handler.setFormatter(formatter)
