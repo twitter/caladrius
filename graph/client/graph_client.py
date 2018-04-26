@@ -9,3 +9,9 @@ class GraphClient(ABC):
     @abstractmethod
     def __init__(self, config: dict) -> None:
         self.config = config
+
+    @abstractmethod
+    def topology_ref_exists(self, topology_id: str, topology_ref: str) -> bool:
+        """ Checks weather the graph database already contains entries with the
+        supplied topology ID and reference. """
+        pass

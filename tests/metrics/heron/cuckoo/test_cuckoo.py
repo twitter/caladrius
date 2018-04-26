@@ -4,4 +4,4 @@ config = {"cuckoo.database.url": 'https://cuckoo-prod-smf1.twitter.biz'}
 
 cuckoo = HeronCuckooClient(config, "Infra-Caladrius")
 
-service_times = cuckoo.get_service_times("ossWordCount3")
+print("Cookoo metrics client available as: cuckoo")

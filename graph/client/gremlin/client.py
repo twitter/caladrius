@@ -35,6 +35,35 @@ class GremlinClient(GraphClient):
             self.graph.traversal().withRemote(DriverRemoteConnection(
                 f"ws://{self.gremlin_server_url}/gremlin", self.graph_name))
 
+    def topology_ref_exists(self, topology_id: str, topology_ref: str) -> bool:
+        """ Checks weather vertices exist in the graph database with the
+        supplied topology id and ref values.
+
+        Arguments:
+            topology_id (str):  The topology identification string.
+            topology_ref (str): The reference string to check for.
+
+        Returns:
+            Boolean flag indicating if vertices with the supplied ID and
+            reference are present (True) or not (False) in the graph database.
+        """
+
+        num_vertices: int = len((self.graph_traversal.V()
+                                 .has("topology_id", topology_id)
+                                 .has("topology_ref", topology_ref)
+                                 .toList()))
+
+        if num_vertices:
+            LOG.debug("%d vertices with the topology id: %s and reference: %s "
+                      "are present in the graph database.", num_vertices,
+                      topology_id, topology_ref)
+            return True
+        else:
+            LOG.debug("Topology: %s reference: %s is not present in the graph "
+                      "database", topology_id, topology_ref)
+
+        return False
+
     def topology_subgraph(self, topology_id: str,
                           topology_ref: str) -> GraphTraversalSource:
         """ Gets a gremlin graph traversal source limited to the sub-graph of

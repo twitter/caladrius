@@ -282,7 +282,7 @@ class HeronCuckooClient(HeronMetricsClient):
         if start and end:
             LOG.info("Querying for execution latencies for topology: %s over "
                      "a period of %d seconds from %s to %s UTC", topology_id,
-                     (end-start).total_second(), start.isoformat(),
+                     (end-start).total_seconds(), start.isoformat(),
                      end.isoformat())
 
         json_response: requests.Response = self.query(query_str,
@@ -372,7 +372,7 @@ class HeronCuckooClient(HeronMetricsClient):
         if start and end:
             LOG.info("Querying for execution counts for topology: %s over a "
                      "period of %d seconds from %s to %s UTC", topology_id,
-                     (end-start).total_second(), start.isoformat(),
+                     (end-start).total_seconds(), start.isoformat(),
                      end.isoformat())
 
         json_response: requests.Response = self.query(query_str,
@@ -404,10 +404,10 @@ class HeronCuckooClient(HeronMetricsClient):
 
         return pd.DataFrame(output)
 
-    def get_received_count(self, topology_id: str, granularity: str = "m",
+    def get_receive_counts(self, topology_id: str, granularity: str = "m",
                            start: dt.datetime = None, end: dt.datetime = None
                           ) -> pd.DataFrame:
-        """ Gets the tuple received counts, as a timeseries, for every instance
+        """ Gets the tuple receive counts, as a timeseries, for every instance
         of every component in the specified topology. The start and end
         times for the window over which to gather metrics can be specified.
 
@@ -466,7 +466,7 @@ class HeronCuckooClient(HeronMetricsClient):
         if start and end:
             LOG.info("Querying for receive count for topology: %s over a "
                      "period of %d seconds from %s to %s UTC", topology_id,
-                     (end-start).total_second(), start.isoformat(),
+                     (end-start).total_seconds(), start.isoformat(),
                      end.isoformat())
 
         json_response: requests.Response = self.query(query_str,
