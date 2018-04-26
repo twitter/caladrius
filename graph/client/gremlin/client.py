@@ -79,8 +79,8 @@ class GremlinClient(GraphClient):
             A GraphTraversalSource instance linked to the desired sub-graph
         """
 
-        LOG.info("Creating traversal source for topology %s subgraph with "
-                 "reference: %s", topology_id, topology_ref)
+        LOG.debug("Creating traversal source for topology %s subgraph with "
+                  "reference: %s", topology_id, topology_ref)
 
         topo_graph_traversal: GraphTraversalSource = \
             self.graph_traversal.withStrategies(

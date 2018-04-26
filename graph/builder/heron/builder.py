@@ -76,7 +76,7 @@ def _create_spouts(graph_client: GremlinClient, topology_id: str,
             instance: Dict[str, Union[str, int]] = \
                     tracker.parse_instance_name(instance_name)
 
-            LOG.debug("Creating vertex for instance: %s", instance_name)
+            LOG.debug("Creating vertex for spout instance: %s", instance_name)
 
             stream_manager_id: str = \
                 physical_plan["instances"][instance_name]["stmgrId"]
@@ -315,7 +315,8 @@ def create_physical_graph(graph_client: GremlinClient,
         LOG.error(msg)
         raise RuntimeError(msg)
 
-    LOG.info("Building topology %s reference %s", topology_id, topology_ref)
+    LOG.info("Building physical graph for topology %s reference %s",
+             topology_id, topology_ref)
 
     _create_stream_managers(graph_client, topology_id, topology_ref,
                             physical_plan)
@@ -344,8 +345,9 @@ def populate_physical_graph(graph_client: GremlinClient,
         raise RuntimeError(msg)
 
     LOG.info("Populating topology %s reference %s physical graph with "
-             "with metrics data from between %s and %s", topology_id,
-             topology_ref, start.isoformat(), end.isoformat())
+             "with metrics data from a %d second window from %s and %s",
+             topology_id, topology_ref, (end - start).total_seconds(),
+             start.isoformat(), end.isoformat())
 
     set_shuffle_routing_probs(graph_client, topology_id, topology_ref)
 

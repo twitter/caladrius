@@ -117,7 +117,7 @@ def calculate_inter_instance_rps(metrics_client: HeronMetricsClient,
     """
 
     LOG.info("Calculating instance to instance routing probabilities for "
-             "topology %s for period form %s to %s", topology_id,
+             "topology %s for period from %s to %s", topology_id,
              start.isoformat(), end.isoformat())
 
     # Get the receive counts for the topology
