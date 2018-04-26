@@ -1,17 +1,13 @@
 caladrius.graph package
 =======================
 
-Submodules
-----------
+Subpackages
+-----------
 
-caladrius.graph.graph\_client module
-------------------------------------
+.. toctree::
 
-.. automodule:: caladrius.graph.graph_client
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
+    caladrius.graph.builder
+    caladrius.graph.client
 
 Module contents
 ---------------

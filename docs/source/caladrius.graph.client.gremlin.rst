@@ -1,13 +1,13 @@
-caladrius.metrics.heron.cuckoo package
+caladrius.graph.client.gremlin package
 ======================================
 
 Submodules
 ----------
 
-caladrius.metrics.heron.cuckoo.client module
+caladrius.graph.client.gremlin.client module
 --------------------------------------------
 
-.. automodule:: caladrius.metrics.heron.cuckoo.client
+.. automodule:: caladrius.graph.client.gremlin.client
     :members:
     :undoc-members:
     :show-inheritance:
@@ -16,7 +16,7 @@ caladrius.metrics.heron.cuckoo.client module
 Module contents
 ---------------
 
-.. automodule:: caladrius.metrics.heron.cuckoo
+.. automodule:: caladrius.graph.client.gremlin
     :members:
     :undoc-members:
     :show-inheritance:

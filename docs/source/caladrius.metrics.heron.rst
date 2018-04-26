@@ -11,10 +11,10 @@ Subpackages
 Submodules
 ----------
 
-caladrius.metrics.heron.heron\_metrics\_client module
------------------------------------------------------
+caladrius.metrics.heron.client module
+-------------------------------------
 
-.. automodule:: caladrius.metrics.heron.heron_metrics_client
+.. automodule:: caladrius.metrics.heron.client
     :members:
     :undoc-members:
     :show-inheritance:

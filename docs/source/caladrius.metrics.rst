@@ -11,10 +11,10 @@ Subpackages
 Submodules
 ----------
 
-caladrius.metrics.metrics\_client module
-----------------------------------------
+caladrius.metrics.client module
+-------------------------------
 
-.. automodule:: caladrius.metrics.metrics_client
+.. automodule:: caladrius.metrics.client
     :members:
     :undoc-members:
     :show-inheritance:

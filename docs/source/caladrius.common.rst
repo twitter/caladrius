@@ -6,7 +6,9 @@ Subpackages
 
 .. toctree::
 
+    caladrius.common.cuckoo
     caladrius.common.heron
+    caladrius.common.time
 
 Module contents
 ---------------
