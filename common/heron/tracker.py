@@ -1,10 +1,10 @@
-""" This module contains methods for extracting information from the Heron
-Tracker services REST API:
+""" This module contains methods for extracting and analysing information from
+the Heron Tracker services REST API:
 https://twitter.github.io/heron/docs/operators/heron-tracker-api/
 """
 import logging
 
-from typing import List, Dict, Union, Any
+from typing import List, Dict, Union, Any, Tuple
 
 import requests
 
@@ -284,3 +284,67 @@ def issue_metrics_query(tracker_url: str, cluster: str, environ: str,
              "period of %d seconds", query, topology, duration)
 
     return response.json()["result"]
+
+def get_incoming_streams(logical_plan: Dict[str, Any],
+                         component_name: str) -> List[str]:
+    """ Gets a list of input stream names for the supplied component in the
+    supplied logical plan.
+
+    Arguments:
+        logical_plan (dict):    Logical plan dictionary returned by the Heron
+                                Tracker API.
+        component (str):    The name of the component whose incoming streams
+                            are to be extracted.
+
+    Returns:
+        A list of incoming stream names.
+    """
+
+    return [input_stream["stream_name"]
+            for input_stream
+            in logical_plan["bolts"][component_name]["inputs"]]
+
+def incoming_sources_and_streams(logical_plan: Dict[str, Any],
+                                 component_name: str
+                                ) -> List[Tuple[str, str]]:
+    """ Gets a list of (source component, input stream name) tuples for the
+    supplied component in the supplied logical plan.
+
+    Arguments:
+        logical_plan (dict):    Logical plan dictionary returned by the Heron
+                                Tracker API.
+        component (str):    The name of the component whose incoming streams
+                            are to be extracted.
+
+    Returns:
+        A list of (source component name, incoming stream name) tuples.
+    """
+
+    return [(input_stream["component_name"], input_stream["stream_name"])
+            for input_stream
+            in logical_plan["bolts"][component_name]["inputs"]]
+
+def get_outgoing_streams(logical_plan: Dict[str, Any],
+                         component_name: str) -> List[str]:
+    """ Gets a list of output stream names for the supplied component in the
+    supplied logical plan.
+
+    Arguments:
+        logical_plan (dict):    Logical plan dictionary returned by the Heron
+                                Tracker API.
+        component (str):    The name of the component whose outgoing streams
+                            are to be extracted.
+
+    Returns:
+        A list of outgoing stream names.
+    """
+
+    # Check if this is a spout
+    if logical_plan["spouts"].get(component_name):
+        comp_type: str = "spouts"
+    else:
+        comp_type = "bolts"
+
+    return [output_stream["stream_name"]
+            for output_stream
+            in logical_plan[comp_type][component_name]["outputs"]]

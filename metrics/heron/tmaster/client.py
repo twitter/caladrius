@@ -5,7 +5,7 @@ import logging
 
 import datetime as dt
 
-from typing import Dict, List, Any, Callable
+from typing import Dict, List, Any, Callable, Union, Tuple
 
 import pandas as pd
 
@@ -14,34 +14,12 @@ from caladrius.common.heron import tracker
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-def get_incoming_streams(logical_plan: Dict[str, Any],
-                         component_name: str) -> List[str]:
-    """ Gets a list of input stream names for the supplied component in the
-    supplied logical plan. """
+# pylint: disable=too-many-locals, too-many-arguments
 
-    return [input_stream["stream_name"]
-            for input_stream
-            in logical_plan["bolts"][component_name]["inputs"]]
-
-def get_outgoing_streams(logical_plan: Dict[str, Any],
-                         component_name: str) -> List[str]:
-    """ Gets a list of output stream names for the supplied component in the
-    supplied logical plan. """
-
-    # Check if this is a spout
-    if logical_plan["spouts"].get(component_name):
-        comp_type: str = "spouts"
-    else:
-        comp_type = "bolts"
-
-    return [output_stream["stream_name"]
-            for output_stream
-            in logical_plan[comp_type][component_name]["outputs"]]
-
-def instance_timelines_to_dataframe(instance_timelines: dict, stream: str,
-                                    measurement_name: str,
-                                    conversion_func: Callable[[str], Any] = None
-                                   ) -> pd.DataFrame:
+def instance_timelines_to_dataframe(
+        instance_timelines: dict, stream: str, measurement_name: str,
+        conversion_func: Callable[[str], Any] = None,
+        source_component: str = None) -> pd.DataFrame:
     """ Converts the timeline dictionaries of a *single metric* into a single
     combined DataFrame for all instances. All timestamps are converted to UTC
     Python datetime objects and the returned DataFrame (for each instance) is
@@ -66,12 +44,12 @@ def instance_timelines_to_dataframe(instance_timelines: dict, stream: str,
         supplied dictionary.
     """
 
-    output: List[Dict[str, Any]] = []
+    output: List[Dict[str, Union[str, int, float]]] = []
 
     for instance_name, timeline in instance_timelines.items():
 
         details = tracker.parse_instance_name(instance_name)
-        instance_list: List[Dict[str, Any]] = []
+        instance_list: List[Dict[str, Union[str, int, float]]] = []
 
         for timestamp_str, measurement_str in timeline.items():
 
@@ -83,13 +61,18 @@ def instance_timelines_to_dataframe(instance_timelines: dict, stream: str,
             else:
                 measurement = conversion_func(measurement_str)
 
-            instance_list.append({
+            row: Dict[str, Union[str, int, float]] = {
                 "timestamp" : timestamp,
                 "container" : details["container"],
                 "task" : details["task_id"],
                 "component" : details["component"],
                 "stream" : stream,
-                measurement_name : measurement})
+                measurement_name : measurement}
+
+            if source_component:
+                row["source_component"] = source_component
+
+            instance_list.append(row)
 
         # Because the original dict returned by the tracker is
         # unsorted we need to sort the rows by ascending time
@@ -171,11 +154,11 @@ class HeronTMasterClient(HeronMetricsClient):
             logical_plan = tracker.get_logical_plan(self.tracker_url, cluster,
                                                     environ, topology_id)
 
-        incoming_streams: List[str] = get_incoming_streams(logical_plan,
-                                                           component_name)
+        incoming_streams: List[Tuple[str, str]] = \
+            tracker.incoming_sources_and_streams(logical_plan, component_name)
 
-        metrics: List[str] = ["__execute-latency/" + stream
-                              for stream in incoming_streams]
+        metrics: List[str] = ["__execute-latency/" + source + "/" + stream
+                              for source, stream in incoming_streams]
 
         results: Dict[str, Any] = tracker.get_metrics_timeline(
             self.tracker_url, cluster, environ, topology_id, component_name,
@@ -184,11 +167,13 @@ class HeronTMasterClient(HeronMetricsClient):
         output: pd.DataFrame = None
 
         for stream_metric, instance_timelines in results["timeline"].items():
-            incoming_stream: str = stream_metric.split("/")[-1]
+            metric_list: List[str] = stream_metric.split("/")
+            incoming_source: str = metric_list[1]
+            incoming_stream: str = metric_list[2]
 
             instance_tls_df: pd.DataFrame = instance_timelines_to_dataframe(
-                instance_timelines, incoming_stream, "execute-latency-ms",
-                str_nano_to_float_milli)
+                instance_timelines, incoming_stream, "latency_ms",
+                str_nano_to_float_milli, incoming_source)
 
             if output is None:
                 output = instance_tls_df
@@ -197,8 +182,8 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return output
 
-    def get_service_times(self, topology_id: str, cluster: str, environ: str,
-                          start: int, end: int):
+    def get_service_times(self, topology_id: str, start: dt.datetime,
+                          end: dt.datetime, **kwargs):
         """ Gets the service times, as a timeseries, for every instance of the
         of all the bolt components of the specified topology. The start and end
         times define the window over which to gather the metrics. The window
@@ -207,15 +192,13 @@ class HeronTMasterClient(HeronMetricsClient):
 
         Arguments:
             topology_id (str):    The topology identification string.
-            cluster (str):  The cluster the topology is running in.
-            environ (str):  The environment the topology is running in (eg.
-                            prod, devel, test, etc).
-            start (int):    Start time for the time period the query is run
-                            against. This should be a UTC POSIX time integer
-                            (seconds since epoch).
-            end (int):  End time for the time period the query is run against.
-                        This should be a UTC POSIX time integer (seconds since
-                        epoch).
+            start (dt.datetime):    utc datetime instance for the start of the
+                                    metrics gathering period.
+            end (dt.datetime):  utc datetime instance for the end of the
+                                metrics gathering period.
+            **cluster (str):  The cluster the topology is running in.
+            **environ (str):  The environment the topology is running in (eg.
+                              prod, devel, test, etc).
 
         Returns:
             A pandas DataFrame containing the service time measurements as a
@@ -228,21 +211,33 @@ class HeronTMasterClient(HeronMetricsClient):
             container:  The ID for the container this metric comes from.
             stream: The name of the incoming stream from which the tuples
                     that lead to this metric came from.
-            execute-latency-ms: The average execute latency measurement in
-                                milliseconds for that metric time period.
+            latency_ms: The average execute latency measurement in milliseconds
+                        for that metric time period.
         """
 
         logical_plan: Dict[str, Any] = tracker.get_logical_plan(
-            self.tracker_url, cluster, environ, topology_id)
+            self.tracker_url, kwargs["cluster"], kwargs["environ"],
+            topology_id)
+
+        if (end-start) > dt.timedelta(hours=3):
+            LOG.warning("The specified metrics gathering window is greater "
+                        "than the 3 hours that the TMaster stores. Results "
+                        "will be limited to the last 3 hours of data.")
+
+        start_time: int = int(round(start.timestamp()))
+        end_time: int = int(round(end.timestamp()))
 
         output: pd.DataFrame = None
 
         for bolt_component in logical_plan["bolts"]:
 
             bolt_service_times: pd.DataFrame = \
-                    self.get_component_service_times(topology_id, cluster,
-                                                     environ, bolt_component,
-                                                     start, end, logical_plan)
+                    self.get_component_service_times(topology_id,
+                                                     kwargs["cluster"],
+                                                     kwargs["environ"],
+                                                     bolt_component,
+                                                     start_time, end_time,
+                                                     logical_plan)
 
             if output is None:
                 output = bolt_service_times
@@ -291,7 +286,7 @@ class HeronTMasterClient(HeronMetricsClient):
                 container:  The ID for the container this metric comes from.
                 stream: The name of the incoming stream from which the tuples
                         that lead to this metric came from.
-                emit-count: The emit count in that metric time period
+                emit_count: The emit count in that metric time period
         """
 
         LOG.info("Getting emission metrics for component %s of topology "
@@ -304,8 +299,8 @@ class HeronTMasterClient(HeronMetricsClient):
             logical_plan = tracker.get_logical_plan(self.tracker_url, cluster,
                                                     environ, topology_id)
 
-        outgoing_streams: List[str] = get_outgoing_streams(logical_plan,
-                                                           component_name)
+        outgoing_streams: List[str] = tracker.get_outgoing_streams(
+            logical_plan, component_name)
 
         metrics: List[str] = ["__emit-count/" + stream
                               for stream in outgoing_streams]
@@ -320,7 +315,7 @@ class HeronTMasterClient(HeronMetricsClient):
             outgoing_stream: str = stream_metric.split("/")[-1]
 
             instance_tls_df: pd.DataFrame = instance_timelines_to_dataframe(
-                instance_timelines, outgoing_stream, "emit-count",
+                instance_timelines, outgoing_stream, "emit_count",
                 lambda m: int(float(m)))
 
             if output is None:
@@ -330,25 +325,169 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return output
 
-    def get_emission_counts(self, topology_id: str, cluster: str, environ: str,
-                            start: int, end: int):
-        """ Gets the emit counts, as a timeseries, for every instance of the
-        of all the bolt components of the specified topology. The start and end
-        times define the window over which to gather the metrics. The window
-        duration should be less than 3 hours as this is the limit of what the
-        Topology master stores.
+    def get_emit_counts(self, topology_id: str, start: dt.datetime,
+                        end: dt.datetime, **kwargs):
+        """ Gets the emit counts, as a timeseries, for every instance of each
+        of the components of the specified topology. The start and end times
+        define the window over which to gather the metrics. The window duration
+        should be less than 3 hours as this is the limit of what the Topology
+        master stores.
+
+        Arguments:
+            topology_id (str):    The topology identification string.
+            start (dt.datetime):    utc datetime instance for the start of the
+                                    metrics gathering period.
+            end (dt.datetime):  utc datetime instance for the end of the
+                                metrics gathering period.
+            **cluster (str):  The cluster the topology is running in.
+            **environ (str):  The environment the topology is running in (eg.
+                              prod, devel, test, etc).
+
+        Returns:
+            A pandas DataFrame containing the service time measurements as a
+            timeseries. Each row represents a measurement (aggregated over one
+            minuet) with the following columns:
+            timestamp:  The UTC timestamp for the metric.
+            component: The component this metric comes from.
+            task:   The instance ID number for the instance that the metric
+                    comes from.
+            container:  The ID for the container this metric comes from.
+            stream: The name of the outing stream from which the tuples that
+                     lead to this metric came from.
+            emit_count: The emit count during the metric time period.
+        """
+
+        logical_plan: Dict[str, Any] = tracker.get_logical_plan(
+            self.tracker_url, kwargs["cluster"], kwargs["environ"], topology_id)
+
+        output: pd.DataFrame = None
+
+        components: List[str] = (list(logical_plan["spouts"].keys()) +
+                                 list(logical_plan["bolts"].keys()))
+
+        if (end-start) > dt.timedelta(hours=3):
+            LOG.warning("The specified metrics gathering window is greater "
+                        "than the 3 hours that the TMaster stores. Results "
+                        "will be limited to the last 3 hours of data.")
+
+        start_time: int = int(round(start.timestamp()))
+        end_time: int = int(round(end.timestamp()))
+
+        for component in components:
+
+            comp_emit_counts: pd.DataFrame = \
+                    self.get_component_emission_counts(topology_id,
+                                                       kwargs["cluster"],
+                                                       kwargs["environ"],
+                                                       component,
+                                                       start_time, end_time,
+                                                       logical_plan)
+
+            if output is None:
+                output = comp_emit_counts
+            else:
+                output = output.append(comp_emit_counts, ignore_index=True)
+
+        return output
+
+    def get_component_execute_counts(self, topology_id: str, cluster: str,
+                                     environ: str, component_name: str,
+                                     start: int, end: int,
+                                     logical_plan: Dict[str, Any] = None
+                                    ) -> pd.DataFrame:
+        """ Gets the execute counts, as a timeseries, for every instance of the
+        specified component of the specified topology. The start and end times
+        define the window over which to gather the metrics. The window duration
+        should be less then 3 hours as this is the limit of what the Topology
+        master stores.
 
         Arguments:
             topology_id (str):    The topology identification string.
             cluster (str):  The cluster the topology is running in.
             environ (str):  The environment the topology is running in (eg.
                             prod, devel, test, etc).
+            component_name (str):   The name of the component whose metrics are
+                                    required.
             start (int):    Start time for the time period the query is run
                             against. This should be a UTC POSIX time integer
                             (seconds since epoch).
             end (int):  End time for the time period the query is run against.
                         This should be a UTC POSIX time integer (seconds since
                         epoch).
+            logical_plan (dict):    Optional dictionary logical plan returned
+                                    by the Heron Tracker API. If not supplied
+                                    this method will call the API to get the
+                                    logical plan.
+
+        Returns:
+            A pandas DataFrame containing the emit count measurements as a
+            timeseries. Each row represents a measurement (aggregated over one
+            minuet) with the following columns:
+                timestamp:  The UTC timestamp for the metric time period.
+                component: The component this metric comes from.
+                task:   The instance ID number for the instance that the metric
+                        comes from.
+                container:  The ID for the container this metric comes from.
+                stream: The name of the incoming stream from which the tuples
+                        that lead to this metric came from.
+                execute_count: The execute count in that metric time period
+        """
+
+        LOG.info("Getting execute count metrics for component %s of topology "
+                 "%s between %s and %s", component_name, topology_id,
+                 dt.datetime.utcfromtimestamp(start).isoformat(),
+                 dt.datetime.utcfromtimestamp(end).isoformat())
+
+        if not logical_plan:
+            LOG.debug("Logical plan not supplied, fetching from Heron Tracker")
+            logical_plan = tracker.get_logical_plan(self.tracker_url, cluster,
+                                                    environ, topology_id)
+
+        incoming_streams: List[Tuple[str, str]] = \
+            tracker.incoming_sources_and_streams(logical_plan, component_name)
+
+        metrics: List[str] = ["__execute-count/" + source + "/" + stream
+                              for source, stream in incoming_streams]
+
+        results: Dict[str, Any] = tracker.get_metrics_timeline(
+            self.tracker_url, cluster, environ, topology_id, component_name,
+            start, end, metrics)
+
+        output: pd.DataFrame = None
+
+        for stream_metric, instance_timelines in results["timeline"].items():
+            metric_list: List[str] = stream_metric.split("/")
+            incoming_source: str = metric_list[1]
+            incoming_stream: str = metric_list[2]
+
+            instance_tls_df: pd.DataFrame = instance_timelines_to_dataframe(
+                instance_timelines, incoming_stream, "execute_count",
+                lambda m: int(float(m)), incoming_source)
+
+            if output is None:
+                output = instance_tls_df
+            else:
+                output = output.append(instance_tls_df, ignore_index=True)
+
+        return output
+
+    def get_execute_counts(self, topology_id: str, start: dt.datetime,
+                           end: dt.datetime, **kwargs):
+        """ Gets the execute counts, as a timeseries, for every instance of
+        each of the components of the specified topology. The start and end
+        times define the window over which to gather the metrics. The window
+        duration should be less than 3 hours as this is the limit of what the
+        Topology master stores.
+
+        Arguments:
+            topology_id (str):    The topology identification string.
+            start (dt.datetime):    utc datetime instance for the start of the
+                                    metrics gathering period.
+            end (dt.datetime):  utc datetime instance for the end of the
+                                metrics gathering period.
+            **cluster (str):  The cluster the topology is running in.
+            **environ (str):  The environment the topology is running in (eg.
+                              prod, devel, test, etc).
 
         Returns:
             A pandas DataFrame containing the service time measurements as a
@@ -361,28 +500,43 @@ class HeronTMasterClient(HeronMetricsClient):
             container:  The ID for the container this metric comes from.
             stream: The name of the incoming stream from which the tuples
                     that lead to this metric came from.
-            emit-count: The emit count during the metric time period/
+            execute_count: The execute count during the metric time period.
         """
 
         logical_plan: Dict[str, Any] = tracker.get_logical_plan(
-            self.tracker_url, cluster, environ, topology_id)
+            self.tracker_url, kwargs["cluster"], kwargs["environ"],
+            topology_id)
+
+        if (end-start) > dt.timedelta(hours=3):
+            LOG.warning("The specified metrics gathering window is greater "
+                        "than the 3 hours that the TMaster stores. Results "
+                        "will be limited to the last 3 hours of data.")
+
+        start_time: int = int(round(start.timestamp()))
+        end_time: int = int(round(end.timestamp()))
 
         output: pd.DataFrame = None
 
-        components: List[str] = (list(logical_plan["spouts"].keys()) +
-                                 list(logical_plan["bolts"].keys()))
+        for component in logical_plan["bolts"].keys():
 
-        for component in components:
-
-            comp_emit_counts: pd.DataFrame = \
-                    self.get_component_emission_counts(topology_id, cluster,
-                                                       environ, component,
-                                                       start, end,
-                                                       logical_plan)
+            comp_execute_counts: pd.DataFrame = \
+                    self.get_component_execute_counts(topology_id,
+                                                      kwargs["cluster"],
+                                                      kwargs["environ"],
+                                                      component,
+                                                      start_time, end_time,
+                                                      logical_plan)
 
             if output is None:
-                output = comp_emit_counts
+                output = comp_execute_counts
             else:
-                output = output.append(comp_emit_counts, ignore_index=True)
+                output = output.append(comp_execute_counts, ignore_index=True)
 
         return output
+
+    def get_receive_counts(self, topology_id: str, start: dt.datetime,
+                           end: dt.datetime, **kwargs):
+        msg: str = ("The custom caladrius receive-count metrics is not yet "
+                    "available via the TMaster metrics database")
+        LOG.error(msg)
+        raise NotImplementedError(msg)

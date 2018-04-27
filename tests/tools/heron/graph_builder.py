@@ -10,7 +10,7 @@ from caladrius.graph.builder.heron import builder
 from caladrius.graph.client.gremlin.client import GremlinClient
 from caladrius.common.heron import tracker
 from caladrius.metrics.heron.cuckoo.client import HeronCuckooClient
-from caladrius.common.time.timestamp import get_window_dt_from_now
+from caladrius.common.timestamp import get_window_dt_from_now
 
 LOG: logging.Logger = logging.getLogger(__name__)
 

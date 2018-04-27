@@ -23,6 +23,20 @@ class HeronMetricsClient(MetricsClient):
     @abstractmethod
     def get_receive_counts(self, topology_id: str, start: dt.datetime,
                            end: dt.datetime, **kwargs):
-        """ Gets a time series of the service times of each of the bolt
+        """ Gets a time series of the receive counts of each of the bolt
         instances in the specified topology"""
+        pass
+
+    @abstractmethod
+    def get_emit_counts(self, topology_id: str, start: dt.datetime,
+                        end: dt.datetime, **kwargs):
+        """ Gets a time series of the emit count of each of the instances in
+        the specified topology"""
+        pass
+
+    @abstractmethod
+    def get_execute_counts(self, topology_id: str, start: dt.datetime,
+                           end: dt.datetime, **kwargs):
+        """ Gets a time series of the emit count of each of the instances in
+        the specified topology"""
         pass
