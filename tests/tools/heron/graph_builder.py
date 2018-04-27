@@ -5,6 +5,8 @@ import logging
 import argparse
 import sys
 
+import datetime as dt
+
 from caladrius.logs import set_up_logging
 from caladrius.graph.builder.heron import builder
 from caladrius.graph.client.gremlin.client import GremlinClient
@@ -68,11 +70,13 @@ CONFIG = {"heron.tracker.url" :
           "gremlin.server.url" : "localhost:8182",
           "cuckoo.database.url": 'https://cuckoo-prod-smf1.twitter.biz'}
 
-logical_plan = tracker.get_logical_plan(CONFIG["heron.tracer.url"], ARGS.zone,
+timer_start = dt.datetime.now()
+
+logical_plan = tracker.get_logical_plan(CONFIG["heron.tracker.url"], ARGS.zone,
                                         ARGS.environment,
                                         ARGS.topology)
 
-physical_plan = tracker.get_physical_plan(CONFIG["heron.tracer.url"],
+physical_plan = tracker.get_physical_plan(CONFIG["heron.tracker.url"],
                                           ARGS.zone,
                                           ARGS.environment,
                                           ARGS.topology)
@@ -94,7 +98,7 @@ if ARGS.populate and ARGS.duration:
         builder.populate_physical_graph(graph_client, metrics_client,
                                         ARGS.topology, ARGS.reference,
                                         start, end)
-    except KeyError:
+    except KeyError as kerr:
         msg: str = ("Caladrius metrics not present in metrics database. Cannot"
                     " continue with graph metrics population.")
 
@@ -102,3 +106,6 @@ if ARGS.populate and ARGS.duration:
             print(msg)
         else:
             LOG.error(msg)
+
+LOG.info("Graph building completed in %d seconds",
+         (dt.datetime.now() - timer_start).total_seconds())
