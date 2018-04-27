@@ -4,7 +4,7 @@ import logging
 
 import datetime as dt
 
-from typing import List, Dict, Union, Any
+from typing import List, Dict, Union, Any, cast
 
 import requests
 
@@ -44,22 +44,23 @@ def parse_metric_details(details: Dict[str, List[str]]) -> Dict[str, Any]:
 
     metrics_list: List[str] = details["metrics"][0].split("/")
 
-    details: Dict[str, Any] = {"container" : container_num,
-                               "component" : component,
-                               "task" : task_id}
+    instance_details: Dict[str, Any] = {"container" : container_num,
+                                        "component" : component,
+                                        "task" : task_id}
 
     if "receive-count" in metrics_list[0]:
-        details["source_task"] = int(metrics_list[2])
+        instance_details["source_component"] = metrics_list[1]
+        instance_details["source_task"] = int(metrics_list[2])
         stream: str = metrics_list[3]
     elif "emit-count" in metrics_list[0]:
         stream = metrics_list[1]
     else:
         stream = metrics_list[2]
-        details["source_component"] = metrics_list[1]
+        instance_details["source_component"] = metrics_list[1]
 
-    details["stream"] = stream
+    instance_details["stream"] = stream
 
-    return details
+    return instance_details
 
 class HeronCuckooClient(HeronMetricsClient):
     """ Class for extracting heron metrics from the Cuckoo timeseries database.
@@ -78,7 +79,7 @@ class HeronCuckooClient(HeronMetricsClient):
         super().__init__(config)
 
         self.client_name: str = client_name
-        self.base_url: str = config["cuckoo.database.url"]
+        self.base_url: str = cast(str, config["cuckoo.database.url"])
 
     def get_services(self) -> List[str]:
         """ Gets a list of all service names contained within the Cuckoo
@@ -156,7 +157,7 @@ class HeronCuckooClient(HeronMetricsClient):
         return response.json()
 
     def query(self, query_str: str, query_name: str, granularity: str,
-              start: int = None, end: int = None)  -> dict:
+              start: int = None, end: int = None)  -> Dict[str, Any]:
         """ Run the supplied query against the cuckoo database.
 
         Arguments:
@@ -191,10 +192,9 @@ class HeronCuckooClient(HeronMetricsClient):
         """
         url: str = self.base_url + "/query"
 
-        payload: Dict[str, str] = {"query" : query_str,
-                                   "client_source" : self.client_name,
-                                   "granularity" : granularity,
-                                   "name" : query_name}
+        payload: Dict[str, Union[str, int]] = \
+            {"query" : query_str, "client_source" : self.client_name,
+             "granularity" : granularity, "name" : query_name}
 
         if start:
             payload["start"] = start
@@ -225,14 +225,14 @@ class HeronCuckooClient(HeronMetricsClient):
         # Check that the query ran successfully
         if json_response["status"] != "Success":
             raise RuntimeError(f'Query return non-successful status: '
-                               f'{response["Success"]}')
+                               f'{json_response["Success"]}')
 
         return json_response
 
 
     def get_service_times(self, topology_id: str, start: dt.datetime = None,
-                          end: dt.datetime = None, **kwargs: dict
-                         ) -> pd.DataFrame:
+                          end: dt.datetime = None,
+                          **kwargs: Union[str, int, float]) -> pd.DataFrame:
         """ Gets the service times, as a timeseries, for every instance of
         every bolt component of the specified topology. The start and end times
         for the window over which to gather metrics, as well as the granularity
@@ -253,8 +253,8 @@ class HeronCuckooClient(HeronMetricsClient):
                                 object. This should not be supplied without a
                                 corresponding start time. If it is, it will be
                                 ignored.
-            granularity (str):  Optional time granularity for this query, can
-                                be one of "h", "m", "s". Defaults to "m".
+            **granularity (str):  Optional time granularity for this query, can
+                                  be one of "h", "m", "s". Defaults to "m".
 
         Returns:
             A pandas DataFrame containing the service time measurements as a
@@ -294,12 +294,12 @@ class HeronCuckooClient(HeronMetricsClient):
         if "granularity" not in kwargs:
             granularity: str = "m"
         else:
-            granularity = kwargs["granularity"]
+            granularity = cast(str, kwargs["granularity"])
 
-        json_response: requests.Response = self.query(query_str,
-                                                      "execute latency",
-                                                      granularity, start_ts,
-                                                      end_ts)
+        json_response: Dict[str, Any] = self.query(query_str,
+                                                   "execute latency",
+                                                   granularity, start_ts,
+                                                   end_ts)
 
         output: List[Dict[str, Any]] = []
 
@@ -327,7 +327,8 @@ class HeronCuckooClient(HeronMetricsClient):
         return pd.DataFrame(output)
 
     def get_execute_counts(self, topology_id: str, start: dt.datetime = None,
-                           end: dt.datetime = None, **kwargs) -> pd.DataFrame:
+                           end: dt.datetime = None,
+                           **kwargs: Union[str, int, float]) -> pd.DataFrame:
         """ Gets the execution counts, as a timeseries, for every instance of
         the every component in the specified topology. The start and end
         times for the window over which to gather metrics can be specified.
@@ -347,23 +348,23 @@ class HeronCuckooClient(HeronMetricsClient):
                                 object. This should not be supplied without a
                                 corresponding start time. If it is, it will be
                                 ignored.
-            granularity (str):  Optional time granularity for this query, can
-                                be one of "h", "m", "s". Defaults to "m".
+            **granularity (str):  Optional time granularity for this query, can
+                                  be one of "h", "m", "s". Defaults to "m".
 
         Returns:
             A pandas DataFrame containing the execution count measurements as a
             timeseries. Each row represents a measurement (summed over the
             specified granularity) with the following columns:
-                timestamp:  The UTC timestamp for the metric.
-                component: The component this metric comes from.
-                task:   The instance ID number for the instance that the metric
-                        comes from.
-                container:  The ID for the container this metric comes from.
-                source_component:   The name of the component that issued the
-                                    tuples that resulted in this metric.
-                stream: The name of the incoming stream from which the tuples
-                        that lead to this metric came from.
-                execute_count:  The execution count for this instance.
+            timestamp:  The UTC timestamp for the metric.
+            component: The component this metric comes from.
+            task:   The instance ID number for the instance that the metric
+                    comes from.
+            container:  The ID for the container this metric comes from.
+            source_component:   The name of the component that issued the
+                                tuples that resulted in this metric.
+            stream: The name of the incoming stream from which the tuples
+                    that lead to this metric came from.
+            execute_count:  The execution count for this instance.
         """
 
         query_str: str = (f"ts(sum, heron/{topology_id}, /*/*, "
@@ -388,12 +389,12 @@ class HeronCuckooClient(HeronMetricsClient):
         if "granularity" not in kwargs:
             granularity: str = "m"
         else:
-            granularity = kwargs["granularity"]
+            granularity = cast(str, kwargs["granularity"])
 
-        json_response: requests.Response = self.query(query_str,
-                                                      "execute count",
-                                                      granularity, start_ts,
-                                                      end_ts)
+        json_response: Dict[str, Any] = self.query(query_str,
+                                                   "execute count",
+                                                   granularity, start_ts,
+                                                   end_ts)
 
         output: List[Dict[str, Any]] = []
 
@@ -420,7 +421,8 @@ class HeronCuckooClient(HeronMetricsClient):
         return pd.DataFrame(output)
 
     def get_emit_counts(self, topology_id: str, start: dt.datetime = None,
-                        end: dt.datetime = None, **kwargs) -> pd.DataFrame:
+                        end: dt.datetime = None,
+                        **kwargs: Union[str, int, float]) -> pd.DataFrame:
         """ Gets the emit counts, as a timeseries, for every instance of
         the every component in the specified topology. The start and end
         times for the window over which to gather metrics can be specified.
@@ -481,12 +483,11 @@ class HeronCuckooClient(HeronMetricsClient):
         if "granularity" not in kwargs:
             granularity: str = "m"
         else:
-            granularity = kwargs["granularity"]
+            granularity = cast(str, kwargs["granularity"])
 
-        json_response: requests.Response = self.query(query_str,
-                                                      "emit counts",
-                                                      granularity, start_ts,
-                                                      end_ts)
+        json_response: Dict[str, Any] = self.query(query_str, "emit counts",
+                                                   granularity, start_ts,
+                                                   end_ts)
 
         output: List[Dict[str, Any]] = []
 
@@ -521,8 +522,8 @@ class HeronCuckooClient(HeronMetricsClient):
         return pd.DataFrame(output)
 
     def get_receive_counts(self, topology_id: str, start: dt.datetime = None,
-                           end: dt.datetime = None, **kwargs
-                          ) -> pd.DataFrame:
+                           end: dt.datetime = None,
+                           **kwargs: Union[str, int, float]) -> pd.DataFrame:
         """ Gets the tuple receive counts, as a timeseries, for every instance
         of every component in the specified topology. The start and end
         times for the window over which to gather metrics can be specified.
@@ -545,8 +546,8 @@ class HeronCuckooClient(HeronMetricsClient):
                                 object. This should not be supplied without a
                                 corresponding start time. If it is, it will be
                                 ignored.
-            granularity (str):  The time granularity for this query, can be one
-                                of "h", "m", "s". Defaults to "m".
+            **granularity (str):    The time granularity for this query, can be
+                                    one of "h", "m", "s". Defaults to "m".
 
         Returns:
             A pandas DataFrame containing the execution count measurements as a
@@ -588,12 +589,12 @@ class HeronCuckooClient(HeronMetricsClient):
         if "granularity" not in kwargs:
             granularity: str = "m"
         else:
-            granularity = kwargs["granularity"]
+            granularity = cast(str, kwargs["granularity"])
 
-        json_response: requests.Response = self.query(query_str,
-                                                      "receive-counts",
-                                                      granularity, start_ts,
-                                                      end_ts)
+        json_response: Dict[str, Any] = self.query(query_str,
+                                                   "receive-counts",
+                                                   granularity, start_ts,
+                                                   end_ts)
 
         output: List[Dict[str, Any]] = []
 

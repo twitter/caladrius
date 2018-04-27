@@ -7,3 +7,6 @@
 
 # Mac stuff
 *DS_Store
+
+# MyPy 
+.mypy_cache/*

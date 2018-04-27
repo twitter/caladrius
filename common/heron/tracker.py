@@ -13,7 +13,7 @@ LOG: logging.Logger = logging.getLogger(__name__)
 #pylint: disable=too-many-arguments
 
 def get_logical_plan(tracker_url: str, cluster: str, environ: str,
-                     topology: str) -> Dict[str, Union[int, str]]:
+                     topology: str) -> Dict[str, Any]:
     """ Get the logical plan dictionary from the heron tracker api.
 
     Arguments:
@@ -50,7 +50,7 @@ def get_logical_plan(tracker_url: str, cluster: str, environ: str,
     return response.json()["result"]
 
 def get_physical_plan(tracker_url: str, cluster: str, environ: str,
-                      topology: str) -> Dict[str, Union[int, str]]:
+                      topology: str) -> Dict[str, Any]:
     """ Get the logical plan dictionary from the heron tracker api.
 
     Arguments:
@@ -87,7 +87,7 @@ def get_physical_plan(tracker_url: str, cluster: str, environ: str,
 
     return response.json()["result"]
 
-def parse_instance_name(instance_name: str):
+def parse_instance_name(instance_name: str) -> Dict[str, Union[str, int]]:
     """ Parses the instance name string returned by the Heron Tracker API into
     a dictionary with instance information.
 
@@ -167,7 +167,7 @@ def get_metrics(tracker_url: str, cluster: str, environ: str, topology: str,
         requests.HTTPError: If a non 200 status code is returned.
     """
 
-    payload: Dict[str, Union[str, int]] = {
+    payload: Dict[str, Union[str, List[str], int]] = {
         "cluster" : cluster, "environ" : environ, "topology" : topology,
         "component" : component, "interval" : interval, "metricname" : metrics}
 
@@ -219,7 +219,7 @@ def get_metrics_timeline(tracker_url: str, cluster: str, environ: str,
                     "topology: %s was greater than the 3 hours of data stored "
                     "by the Topology Master", str(metrics), topology)
 
-    payload: Dict[str, Union[str, int]] = {
+    payload: Dict[str, Union[str, List[str], int]] = {
         "cluster" : cluster, "environ" : environ, "topology" : topology,
         "component" : component, "starttime" : start_time,
         "endtime" : end_time, "metricname" : metrics}
