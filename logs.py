@@ -7,7 +7,7 @@ from sys import stdout
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-def set_up_logging(logfile: str = None, debug: bool = False) -> None:
+def setup(logfile: str = None, debug: bool = False) -> None:
     """ This will set up the root Python logger instance and by default will
     attach a stream handler piping all output to stdout. However an optional
     output filename can be specified to preserve the logs. The dubug argument
@@ -20,8 +20,15 @@ def set_up_logging(logfile: str = None, debug: bool = False) -> None:
                         output.
     """
 
+    # Capture warnings issued by packages like pandas and numpy
+    logging.captureWarnings(True)
+
     # Grab the root logger
     top_log: logging.Logger = logging.getLogger()
+
+    if top_log.hasHandlers():
+        LOG.warning("Root Logger already has registered handlers. There may "
+                    "be duplicate output.")
 
     if debug:
         top_log.setLevel(logging.DEBUG)
@@ -33,10 +40,6 @@ def set_up_logging(logfile: str = None, debug: bool = False) -> None:
         top_log.setLevel(logging.INFO)
         formatter = logging.Formatter(("{asctime} | {name} | {levelname} "
                                        "| {message}"), style='{')
-
-    if top_log.hasHandlers():
-        LOG.warning("Root Logger already has registered handlers. There may "
-                    "be duplicate output.")
 
     console_handler: logging.StreamHandler = logging.StreamHandler(stdout)
     console_handler.setFormatter(formatter)

@@ -28,7 +28,7 @@ class GremlinClient(GraphClient):
         self.graph: Graph = Graph()
         self.connect()
 
-    def connect(self):
+    def connect(self) -> None:
         """ Creates (or refreshes) the remote connection to the gremlin server.
         """
         self.graph_traversal: GraphTraversalSource = \

@@ -10,10 +10,15 @@ import requests
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+# Define Types
+LPLAN_SPOUTS = Dict[str, Dict[str, Union[str, List[Dict[str, str]]]]]
+LPLAN_BOLTS = Dict[str, Dict[str, Union[List[str], List[Dict[str, str]]]]]
+LOGICAL_PLAN = Dict[str, Union[int, LPLAN_SPOUTS, LPLAN_BOLTS]]
+
 #pylint: disable=too-many-arguments
 
 def get_logical_plan(tracker_url: str, cluster: str, environ: str,
-                     topology: str) -> Dict[str, Any]:
+                     topology: str) -> LOGICAL_PLAN:
     """ Get the logical plan dictionary from the heron tracker api.
 
     Arguments:

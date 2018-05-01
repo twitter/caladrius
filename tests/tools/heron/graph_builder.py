@@ -7,17 +7,19 @@ import sys
 
 import datetime as dt
 
-from caladrius.logs import set_up_logging
+from typing import Dict
+
+from caladrius import logs
 from caladrius.graph.builder.heron import builder
 from caladrius.graph.client.gremlin.client import GremlinClient
 from caladrius.common.heron import tracker
 from caladrius.metrics.heron.cuckoo.client import HeronCuckooClient
 from caladrius.common.timestamp import get_window_dt_from_now
 
-LOG: logging.Logger = logging.getLogger(__name__)
+LOG: logging.Logger = \
+    logging.getLogger("caladrius.tests.tools.heron.graph_builder")
 
 #pylint: disable=invalid-name
-
 
 # Setup the command line parser
 parser = argparse.ArgumentParser(
@@ -50,7 +52,7 @@ parser.add_argument("-q", "--quiet", required=False, action="store_true",
 ARGS = parser.parse_args()
 
 if not ARGS.quiet:
-    set_up_logging(debug=ARGS.debug)
+    logs.setup(debug=ARGS.debug)
 
 if ARGS.populate and not ARGS.duration:
     msg: str = ("Populate flag was supplied but duration argument "
@@ -65,10 +67,11 @@ if ARGS.populate and not ARGS.duration:
     sys.exit(2)
 
 # TODO: Move these to config file and load from there
-CONFIG = {"heron.tracker.url" :
-          "http://heron-tracker-new.prod.heron.service.smf1.twitter.com",
-          "gremlin.server.url" : "localhost:8182",
-          "cuckoo.database.url": 'https://cuckoo-prod-smf1.twitter.biz'}
+CONFIG: Dict[str, str] = {
+    "heron.tracker.url" :
+    "http://heron-tracker-new.prod.heron.service.smf1.twitter.com",
+    "gremlin.server.url" : "localhost:8182",
+    "cuckoo.database.url": 'https://cuckoo-prod-smf1.twitter.biz'}
 
 timer_start = dt.datetime.now()
 
@@ -90,7 +93,8 @@ builder.create_physical_graph(graph_client,
 
 if ARGS.populate and ARGS.duration:
 
-    metrics_client = HeronCuckooClient(CONFIG, "Infra-Caladrius")
+    metrics_client: HeronCuckooClient = HeronCuckooClient(CONFIG,
+                                                          "Infra-Caladrius")
 
     start, end = get_window_dt_from_now(seconds=ARGS.duration)
 
@@ -99,13 +103,13 @@ if ARGS.populate and ARGS.duration:
                                         ARGS.topology, ARGS.reference,
                                         start, end)
     except KeyError as kerr:
-        msg: str = ("Caladrius metrics not present in metrics database. Cannot"
-                    " continue with graph metrics population.")
+        err_msg: str = ("Caladrius metrics not present in metrics database. "
+                        "Cannot continue with graph metrics population.")
 
         if ARGS.quiet:
-            print(msg)
+            print(err_msg)
         else:
-            LOG.error(msg)
+            LOG.error(err_msg)
 
 LOG.info("Graph building completed in %d seconds",
          (dt.datetime.now() - timer_start).total_seconds())

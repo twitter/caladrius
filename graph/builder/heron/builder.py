@@ -6,7 +6,7 @@ import logging
 
 import datetime as dt
 
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Any
 
 from gremlin_python.process.traversal import P
 from gremlin_python.process.graph_traversal import __
@@ -20,9 +20,10 @@ from caladrius.metrics.heron.client import HeronMetricsClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+# pylint: disable = too-many-arguments
+
 def _create_stream_managers(graph_client: GremlinClient, topology_id: str,
-                            topology_ref: str,
-                            physical_plan: Dict[str, Union[str, int]]
+                            topology_ref: str, physical_plan: Dict[str, Any]
                            ) -> None:
 
     LOG.info("Creating stream managers and container vertices")
@@ -62,8 +63,8 @@ def _create_stream_managers(graph_client: GremlinClient, topology_id: str,
 
 def _create_spouts(graph_client: GremlinClient, topology_id: str,
                    topology_ref: str,
-                   physical_plan: Dict[str, Union[str, int]],
-                   logical_plan: Dict[str, Union[str, int]]) -> None:
+                   physical_plan: Dict[str, Any],
+                   logical_plan: Dict[str, Any]) -> None:
 
     # Create the spouts
     physical_spouts: Dict[str, List[str]] = physical_plan["spouts"]
@@ -107,8 +108,8 @@ def _create_spouts(graph_client: GremlinClient, topology_id: str,
 
 def _create_bolts(graph_client: GremlinClient, topology_id: str,
                   topology_ref: str,
-                  physical_plan: Dict[str, Union[str, int]],
-                  logical_plan: Dict[str, Union[str, int]]) -> None:
+                  physical_plan: Dict[str, Any],
+                  logical_plan: Dict[str, Any]) -> None:
 
     # Create all the bolt vertices
     physical_bolts: Dict[str, List[str]] = physical_plan["bolts"]
@@ -149,7 +150,7 @@ def _create_bolts(graph_client: GremlinClient, topology_id: str,
 
 def _create_logical_connections(graph_client: GremlinClient, topology_id: str,
                                 topology_ref: str,
-                                logical_plan: Dict[str, Union[str, int]]
+                                logical_plan: Dict[str, Any]
                                ) -> None:
 
     # Add all the logical connections between the topology's instances
@@ -336,6 +337,26 @@ def populate_physical_graph(graph_client: GremlinClient,
                             metrics_client: HeronMetricsClient,
                             topology_id: str, topology_ref: str,
                             start: dt.datetime, end: dt.datetime) -> None:
+    """ Populates the specified graph with metrics gathered from the defined
+    time period.
+
+    Arguments:
+        graph_client (GremlinClient):   The client instance for the graph
+                                        database.
+        metrics_client (HeronMetricsClient):    The client instance for the
+                                                metrics database.
+        start (dt.datetime):    UTC datetime instance for the start of the
+                                metrics gathering period.
+        end (dt.datetime):  UTC datetime instance for the end of the metrics
+                            gathering period.
+        topology_id (str):  The topology identification string
+        topology_ref (str): The unique reference string for this topology
+                            physical graph.
+
+    Raises:
+        RuntimeError:   If the graph database does not contain a graph with the
+                        supplied ID and reference.
+    """
 
     if not graph_client.topology_ref_exists(topology_id, topology_ref):
         msg: str = (f"A graph of topology {topology_id} with reference "
