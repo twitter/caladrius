@@ -9,6 +9,8 @@ from typing import Dict, List, Any, Callable, Union, Tuple, cast
 
 import pandas as pd
 
+from requests.exceptions import HTTPError
+
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.common.heron import tracker
 
@@ -238,12 +240,17 @@ class HeronTMasterClient(HeronMetricsClient):
         bolt_component: str
         for bolt_component in bolts:
 
-            bolt_service_times: pd.DataFrame = \
-                    self.get_component_service_times(topology_id,
-                                                     cluster, environ,
-                                                     bolt_component,
-                                                     start_time, end_time,
-                                                     logical_plan)
+            try:
+                bolt_service_times: pd.DataFrame = \
+                        self.get_component_service_times(topology_id,
+                                                         cluster, environ,
+                                                         bolt_component,
+                                                         start_time, end_time,
+                                                         logical_plan)
+            except HTTPError as http_error:
+                LOG.warning("Fetching execute latencies  for component %s "
+                            "failed with status code %s", bolt_component,
+                            str(http_error.response.status_code))
 
             if output is None:
                 output = bolt_service_times
@@ -385,11 +392,15 @@ class HeronTMasterClient(HeronMetricsClient):
 
         for component in components:
 
-            comp_emit_counts: pd.DataFrame = \
-                    self.get_component_emission_counts(topology_id, cluster,
-                                                       environ, component,
-                                                       start_time, end_time,
-                                                       logical_plan)
+            try:
+                comp_emit_counts: pd.DataFrame = \
+                        self.get_component_emission_counts(
+                            topology_id, cluster, environ, component,
+                            start_time, end_time, logical_plan)
+            except HTTPError as http_error:
+                LOG.warning("Fetching emit counts for component %s failed with"
+                            " status code %s", component,
+                            str(http_error.response.status_code))
 
             if output is None:
                 output = comp_emit_counts
@@ -530,11 +541,16 @@ class HeronTMasterClient(HeronMetricsClient):
 
         for component in logical_plan["bolts"].keys():
 
-            comp_execute_counts: pd.DataFrame = \
-                    self.get_component_execute_counts(topology_id, cluster,
-                                                      environ, component,
-                                                      start_time, end_time,
-                                                      logical_plan)
+            try:
+                comp_execute_counts: pd.DataFrame = \
+                        self.get_component_execute_counts(topology_id, cluster,
+                                                          environ, component,
+                                                          start_time, end_time,
+                                                          logical_plan)
+            except HTTPError as http_error:
+                LOG.warning("Fetching execute counts for component %s failed "
+                            "with status code %s", component,
+                            str(http_error.response.status_code))
 
             if output is None:
                 output = comp_execute_counts

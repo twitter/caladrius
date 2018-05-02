@@ -105,7 +105,7 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
     emit_counts_ts: pd.DataFrame = \
     (emit_counts.set_index(["task", "timestamp"])
      .groupby([pd.Grouper(level="task"),
-               pd.Grouper(freq=f"{bucket_length}T", level='timestamp'),
+               pd.Grouper(freq=f"{bucket_length}S", level='timestamp'),
                "component", "outgoing_stream"])
      ["emit_count"]
      .sum().reset_index())
