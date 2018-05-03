@@ -4,10 +4,13 @@ variables. """
 import logging
 
 from importlib import import_module
+from typing import Type, Dict, Any
+
+import yaml
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-def get_class(class_path: str):
+def get_class(class_path: str) -> Type:
     """ Method for loading a class from a absolute class path string.
 
     Arguments:
@@ -40,3 +43,21 @@ def get_class(class_path: str):
         raise att_err
 
     return found_class
+
+def load_config(file_path: str) -> Dict[str, Any]:
+    """ Converts the yaml file at the supplied path to a dictionary.
+
+    Arguments:
+        file_path (str): The path to the yaml formatted configuration file.
+
+    Returns:
+        A dictionary formed from the supplied yaml file.
+    """
+
+    LOG.info("Loading yaml file at: %s", file_path)
+
+    with open(file_path, "r") as yaml_file:
+
+        yaml_dict: Dict[str, Any] = yaml.load(yaml_file)
+
+    return yaml_dict
