@@ -10,6 +10,7 @@ import requests
 
 import pandas as pd
 
+from caladrius.config.keys import ConfKeys
 from caladrius.metrics.heron.client import HeronMetricsClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
@@ -66,20 +67,17 @@ class HeronCuckooClient(HeronMetricsClient):
     """ Class for extracting heron metrics from the Cuckoo timeseries database.
     """
 
-    def __init__(self, config: Dict[str, Union[str, int, float]],
-                 client_name: str) -> None:
+    def __init__(self, config: Dict[str, Any]) -> None:
         """ Constructor for Twitter Cuckoo Database connection client.
 
         Arguments:
             config (dict):  Dictionary containing the metrics client
                             configuration values.
-            client_name (str):  An string used to identify the request this
-                                client issues to the metrics database.
         """
         super().__init__(config)
 
-        self.client_name: str = client_name
-        self.base_url: str = cast(str, config["cuckoo.database.url"])
+        self.client_name: str = config[ConfKeys.CUCKOO_CLIENT_NAME.value]
+        self.base_url: str = config[ConfKeys.CUCKOO_SERVER_URL.value]
 
     def get_services(self) -> List[str]:
         """ Gets a list of all service names contained within the Cuckoo

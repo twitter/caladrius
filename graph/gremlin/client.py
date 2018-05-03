@@ -2,6 +2,9 @@
 communicating with a Gremlin Server instance. """
 
 import logging
+import errno
+
+from socket import error as socket_error
 
 from gremlin_python.structure.graph import Graph
 from gremlin_python.process.graph_traversal import has, GraphTraversalSource
@@ -10,6 +13,7 @@ from gremlin_python.driver.driver_remote_connection \
         import DriverRemoteConnection
 
 from caladrius.graph.client import GraphClient
+from caladrius.config.keys import ConfKeys
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -18,7 +22,8 @@ class GremlinClient(GraphClient):
 
     def __init__(self, config: dict, graph_name: str = "g") -> None:
         super().__init__(config)
-        self.gremlin_server_url: str = self.config["gremlin.server.url"]
+        self.gremlin_server_url: str = \
+            self.config[ConfKeys.GREMLIN_SERVER_URL.value]
 
         # Create remote graph traversal object
         LOG.info("Connecting to graph database at: %s",
@@ -31,9 +36,24 @@ class GremlinClient(GraphClient):
     def connect(self) -> None:
         """ Creates (or refreshes) the remote connection to the gremlin server.
         """
-        self.graph_traversal: GraphTraversalSource = \
-            self.graph.traversal().withRemote(DriverRemoteConnection(
-                f"ws://{self.gremlin_server_url}/gremlin", self.graph_name))
+
+        connect_str: str = f"ws://{self.gremlin_server_url}/gremlin"
+
+        try:
+            self.graph_traversal: GraphTraversalSource = \
+                self.graph.traversal().withRemote(
+                    DriverRemoteConnection(connect_str, self.graph_name))
+        except socket_error as serr:
+            if serr.errno != errno.ECONNREFUSED:
+                # Not the error we are looking for, re-raise
+                LOG.error("Socket error occured")
+                raise serr
+            # connection refused
+            msg: str = (f"Connection to gremlin sever at: "
+                        f"{self.gremlin_server_url} using connection string: "
+                        f"{connect_str} was refused. Is the server active?")
+            LOG.error(msg)
+            raise ConnectionRefusedError(msg)
 
     def topology_ref_exists(self, topology_id: str, topology_ref: str) -> bool:
         """ Checks weather vertices exist in the graph database with the

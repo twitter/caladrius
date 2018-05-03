@@ -284,8 +284,8 @@ def _create_physical_connections(graph_client: GremlinClient, topology_id: str,
 
 def create_physical_graph(graph_client: GremlinClient,
                           topology_id: str, topology_ref: str,
-                          logical_plan: Dict[str, Union[str, int]],
-                          physical_plan: Dict[str, Union[str, int]]) -> None:
+                          logical_plan: Dict[str, Any],
+                          physical_plan: Dict[str, Any]) -> None:
     """ This method will build the physical graph of the specified topology
     in the caladrius graph database. It will attach the supplied reference
     to all vertices of this topology physical graph.

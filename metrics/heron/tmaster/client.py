@@ -13,6 +13,7 @@ from requests.exceptions import HTTPError
 
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.common.heron import tracker
+from caladrius.config.keys import ConfKeys
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ class HeronTMasterClient(HeronMetricsClient):
 
     def __init__(self, config: dict) -> None:
         super().__init__(config)
-        self.tracker_url = config["heron.tracker.url"]
+        self.tracker_url = config[ConfKeys.HERON_TRACKER_URL.value]
 
         LOG.info("Created Topology Master metrics client using Heron Tracker "
                  "at: %s", self.tracker_url)
