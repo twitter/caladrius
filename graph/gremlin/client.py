@@ -4,12 +4,12 @@ communicating with a Gremlin Server instance. """
 import logging
 
 from gremlin_python.structure.graph import Graph
-from gremlin_python.process.graph_traversal import __, GraphTraversalSource
+from gremlin_python.process.graph_traversal import has, GraphTraversalSource
 from gremlin_python.process.strategies import SubgraphStrategy
 from gremlin_python.driver.driver_remote_connection \
         import DriverRemoteConnection
 
-from caladrius.graph.client.graph_client import GraphClient
+from caladrius.graph.client import GraphClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -58,11 +58,27 @@ class GremlinClient(GraphClient):
                       "are present in the graph database.", num_vertices,
                       topology_id, topology_ref)
             return True
-        else:
-            LOG.debug("Topology: %s reference: %s is not present in the graph "
-                      "database", topology_id, topology_ref)
 
         return False
+
+    def raise_if_missing(self, topology_id: str, topology_ref: str) -> None:
+        """ Checks weather vertices exist in the graph database with the
+        supplied topology id and ref values and raises a error if they don't.
+
+        Arguments:
+            topology_id (str):  The topology identification string.
+            topology_ref (str): The reference string to check for.
+
+        Raises:
+            RuntimeError:   If vertices with the supplied topology ID and
+                            reference are not present in the graph database.
+        """
+        if not self.topology_ref_exists(topology_id, topology_ref):
+            msg: str = (f"Topology: {topology_id} reference: {topology_ref} "
+                        f"is not present in the graph database")
+            LOG.error(msg)
+            raise RuntimeError(msg)
+
 
     def topology_subgraph(self, topology_id: str,
                           topology_ref: str) -> GraphTraversalSource:
@@ -84,7 +100,7 @@ class GremlinClient(GraphClient):
 
         topo_graph_traversal: GraphTraversalSource = \
             self.graph_traversal.withStrategies(
-                SubgraphStrategy(vertices=__.has("topology_ref", topology_ref)
+                SubgraphStrategy(vertices=has("topology_ref", topology_ref)
                                  .has("topology_id", topology_id)))
 
         return topo_graph_traversal

@@ -13,8 +13,8 @@ from gremlin_python.process.graph_traversal import __
 from gremlin_python.structure.graph import Vertex, Edge
 
 from caladrius.common.heron import tracker
-from caladrius.graph.client.gremlin.client import GremlinClient
-from caladrius.graph.builder.heron.routing_probability \
+from caladrius.graph.gremlin.client import GremlinClient
+from caladrius.graph.analysis.heron.routing_probabilities \
     import set_shuffle_routing_probs, set_fields_routing_probs
 from caladrius.metrics.heron.client import HeronMetricsClient
 

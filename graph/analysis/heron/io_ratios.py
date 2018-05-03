@@ -5,37 +5,43 @@ import logging
 
 import datetime as dt
 
-from typing import Any, Dict, Union, List, DefaultDict, Tuple
-from collections import defaultdict
+from typing import Dict, Union, List, DefaultDict, Tuple
 
 import pandas as pd
 import numpy as np
 
 from caladrius.metrics.heron.client import HeronMetricsClient
+from caladrius.graph.gremlin.client import GremlinClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-def get_in_out_components(logical_plan: Dict[str, Any]) -> List[str]:
+def get_in_out_components(graph_client: GremlinClient, topology_id: str) -> List[str]:
     """ Gets a list of components that have both incoming and outgoing streams.
 
     Arguments:
-        logical_plan (dict):    The logical plan dictionary returned by the
-                                Heron Tracker API.
+        graph_client (GremlinClient):   The client instance for the graph
+                                        database.
+        topology_id (str):  The topology identification string.
 
     Returns:
         A list of component name strings.
     """
 
-    return [comp_name for comp_name, comp_data in logical_plan["bolts"].items()
-            if ("inputs" in comp_data) and ("outputs" in comp_data)]
+    in_out_comps: List[str] = (graph_client.graph_traversal.V()
+                               .hasLabel("bolt").has("topology_id",
+                                                     topology_id)
+                               .inE("logically_connected")
+                               .inV().as_("in_out")
+                               .outE("logically_connected")
+                               .select("in_out").by("component")
+                               .dedup().toList())
+    return in_out_comps
 
 def lstsq_io_ratios(metrics_client: HeronMetricsClient,
-                    topology_id: str, start: dt.datetime, end: dt.datetime,
-                    logical_plan: Dict[str, Any], bucket_length: int,
+                    graph_client: GremlinClient, topology_id: str,
+                    start: dt.datetime, end: dt.datetime, bucket_length: int,
                     metric_kwargs: Dict[str, Union[str, int, float]] = None
-                   ) -> DefaultDict[int, Dict[str,
-                                              List[Dict[str,
-                                                        Union[str, float]]]]]:
+                   ) -> pd.DataFrame:
     """ This method will calculate the input/output ratio for each instance in
     the supplied topology using data aggregated from the defined period. The
     method uses least squares regression to calculate a coefficient for each
@@ -49,13 +55,13 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
     Arguments:
         metrics_client (HeronMetricsClient):    The client instance for the
                                                 metrics database.
+        graph_client (GremlinClient):   The client instance for the graph
+                                        database.
         topology_id (str):  The topology identification string.
         start (dt.datetime):    The UTC datetime object for the start of the
                                 metric gathering period.
         end (dt.datetime):  The UTC datetime object for the end of the metric
                             gathering period.
-        logical_plan (dict):    The logical plan for the topology, returned by
-                                the Heron Tracker API.
         bucket_length (int):    The length in seconds that the metrics should
                                 be aggregated into. *NOTE*: For the least
                                 squares regression to work the number of
@@ -65,14 +71,14 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
                                 keyword arguments needed by the metrics client.
 
     Returns:
-        A dictionary with the following structure:
-
-        [task ID integer] -> [output stream name string] -> [List of input
-        stream dictionaries]
-
-        Each input stream dictionary contains keys for "stream" : input stream
-        name, "source" : source component name, "coefficient" : the stream
-        coefficient as a float.
+        A DataFrame with the following columns:
+        task: Task ID integer
+        output_stream: The output stream name
+        input_stream: The input stream name
+        source_component: The name of the source component for the input stream
+        coefficient:    The value of the input amount coefficient for this
+                        output stream, inputs stream source component
+                        combination.
     """
 
     LOG.info("Calculating instance input/output ratios using least squares "
@@ -88,7 +94,7 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
 
     # Limit the count DataFrames to only those component with both incoming and
     # outgoing streams
-    in_out_comps: List[str] = get_in_out_components(logical_plan)
+    in_out_comps: List[str] = get_in_out_components(graph_client, topology_id)
 
     emit_counts = emit_counts[emit_counts["component"].isin(in_out_comps)]
     emit_counts.rename(index=str, columns={"stream" : "outgoing_stream"},
@@ -118,9 +124,7 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
      ["execute_count"]
      .sum().reset_index())
 
-
-    output: DefaultDict[int, Dict[str, List[Dict[str, Union[str, float]]]]] = \
-            defaultdict(dict)
+    rows: List[Dict[str, Union[str, float]]] = []
 
     # Now we loop through each component and munge the data until we have an
     # output total for each output stream for each task on the same row (one
@@ -172,14 +176,17 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
             coeffs: List[float]
             coeffs, _, _, _ = np.linalg.lstsq(input_counts, output_counts,
                                               rcond=None)
-            out_stream_coeffs: List[Dict[str, Union[str, float]]] = []
             i: int
             in_stream: str
             source: str
             for i, (in_stream, source) in enumerate(cols):
-                out_stream_coeffs.append({"stream" : in_stream,
-                                          "source" : source,
-                                          "coefficient" : coeffs[i]})
-            output[task][out_stream] = out_stream_coeffs
 
-    return output
+                row: Dict[str, Union[str, float]] = {
+                    "task" : task,
+                    "output_stream" : out_stream,
+                    "input_stream" : in_stream,
+                    "source_component" : source,
+                    "coefficient" : coeffs[i]}
+                rows.append(row)
+
+    return pd.DataFrame(rows)

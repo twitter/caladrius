@@ -15,7 +15,7 @@ from gremlin_python.process.graph_traversal import GraphTraversalSource
 from gremlin_python.structure.graph import Edge
 
 from caladrius.metrics.heron.client import HeronMetricsClient
-from caladrius.graph.client.gremlin.client import GremlinClient
+from caladrius.graph.gremlin.client import GremlinClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
