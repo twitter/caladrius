@@ -13,10 +13,6 @@ class HeronMetricsClient(MetricsClient):
     """ Abstract base class for all Heron metric client classes. """
 
     @abstractmethod
-    def __init__(self, config: dict) -> None:
-        super().__init__(config)
-
-    @abstractmethod
     def get_service_times(self, topology_id: str, start: dt.datetime,
                           end: dt.datetime, **kwargs: Union[str, int, float]
                          ) -> DataFrame:

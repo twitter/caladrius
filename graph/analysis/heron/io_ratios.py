@@ -5,7 +5,7 @@ import logging
 
 import datetime as dt
 
-from typing import Dict, Union, List, DefaultDict, Tuple
+from typing import Dict, Union, List, Tuple
 
 import pandas as pd
 import numpy as np
@@ -40,8 +40,7 @@ def get_in_out_components(graph_client: GremlinClient, topology_id: str) -> List
 def lstsq_io_ratios(metrics_client: HeronMetricsClient,
                     graph_client: GremlinClient, topology_id: str,
                     start: dt.datetime, end: dt.datetime, bucket_length: int,
-                    metric_kwargs: Dict[str, Union[str, int, float]] = None
-                   ) -> pd.DataFrame:
+                    **kwargs: Union[str, int, float]) -> pd.DataFrame:
     """ This method will calculate the input/output ratio for each instance in
     the supplied topology using data aggregated from the defined period. The
     method uses least squares regression to calculate a coefficient for each
@@ -67,9 +66,9 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
                                 squares regression to work the number of
                                 buckets must exceed the highest number of input
                                 streams into the component of the topology.
-        metric_kwargs (dict):   Optional dictionary containing additional
-                                keyword arguments needed by the metrics client.
-
+        **kwargs:   Additional keyword arguments that will be passed to the
+                    metrics client object. Consult the documentation for the
+                    specific metrics client beings used.
     Returns:
         A DataFrame with the following columns:
         task: Task ID integer
@@ -87,10 +86,10 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
              start.isoformat(), end.isoformat())
 
     emit_counts: pd.DataFrame = metrics_client.get_emit_counts(
-        topology_id, start, end, **metric_kwargs)
+        topology_id, start, end, **kwargs)
 
     execute_counts: pd.DataFrame = metrics_client.get_execute_counts(
-        topology_id, start, end, **metric_kwargs)
+        topology_id, start, end, **kwargs)
 
     # Limit the count DataFrames to only those component with both incoming and
     # outgoing streams

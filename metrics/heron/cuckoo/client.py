@@ -4,7 +4,7 @@ import logging
 
 import datetime as dt
 
-from typing import List, Dict, Union, Any, cast
+from typing import List, Dict, Union, Any, cast, Optional
 
 import requests
 
@@ -78,6 +78,21 @@ class HeronCuckooClient(HeronMetricsClient):
 
         self.client_name: str = config[ConfKeys.CUCKOO_CLIENT_NAME.value]
         self.base_url: str = config[ConfKeys.CUCKOO_SERVER_URL.value]
+
+    def __hash__(self) -> int:
+
+        return hash((self.client_name, self.base_url))
+
+    def __eq__(self, other: object) -> bool:
+
+        if not isinstance(other, HeronCuckooClient):
+            return False
+
+        if ((self.client_name == other.client_name) and
+                (self.base_url == other.base_url)):
+            return True
+
+        return False
 
     def get_services(self) -> List[str]:
         """ Gets a list of all service names contained within the Cuckoo
@@ -274,12 +289,12 @@ class HeronCuckooClient(HeronMetricsClient):
                           f"__execute-latency/*/*)")
 
         if start:
-            start_ts: int = convert_dt_to_ts(start)
+            start_ts: Optional[int] = convert_dt_to_ts(start)
         else:
             start_ts = None
 
         if end:
-            end_ts: int = convert_dt_to_ts(end)
+            end_ts: Optional[int] = convert_dt_to_ts(end)
         else:
             end_ts = None
 
@@ -369,12 +384,12 @@ class HeronCuckooClient(HeronMetricsClient):
                           f"__execute-count/*/*)")
 
         if start:
-            start_ts: int = convert_dt_to_ts(start)
+            start_ts: Optional[int] = convert_dt_to_ts(start)
         else:
             start_ts = None
 
         if end:
-            end_ts: int = convert_dt_to_ts(end)
+            end_ts: Optional[int] = convert_dt_to_ts(end)
         else:
             end_ts = None
 
@@ -463,12 +478,12 @@ class HeronCuckooClient(HeronMetricsClient):
                           f"__emit-count/*)")
 
         if start:
-            start_ts: int = convert_dt_to_ts(start)
+            start_ts: Optional[int] = convert_dt_to_ts(start)
         else:
             start_ts = None
 
         if end:
-            end_ts: int = convert_dt_to_ts(end)
+            end_ts: Optional[int] = convert_dt_to_ts(end)
         else:
             end_ts = None
 
@@ -501,8 +516,8 @@ class HeronCuckooClient(HeronMetricsClient):
             # Some of the metrics for emit counts are empty (they refer to
             # emissions onto incoming streams ?!?) so ignore them
             if not instance["data"]:
-                LOG.debug("Skipping empty emit count metric % for element: %s",
-                          instance_tag, instance["source"]["metrics"][0])
+                LOG.debug("Skipping empty emit count metric %s for element: "
+                          "%s", instance_tag, instance["source"]["metrics"][0])
                 continue
 
             details: Dict[str, Any] = \
@@ -569,12 +584,12 @@ class HeronCuckooClient(HeronMetricsClient):
                           f"receive-count/*/*/*)")
 
         if start:
-            start_ts: int = convert_dt_to_ts(start)
+            start_ts: Optional[int] = convert_dt_to_ts(start)
         else:
             start_ts = None
 
         if end:
-            end_ts: int = convert_dt_to_ts(end)
+            end_ts: Optional[int] = convert_dt_to_ts(end)
         else:
             end_ts = None
 

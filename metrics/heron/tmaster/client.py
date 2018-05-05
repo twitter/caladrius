@@ -19,9 +19,12 @@ LOG: logging.Logger = logging.getLogger(__name__)
 
 # pylint: disable=too-many-locals, too-many-arguments
 
+# Type definitions
+ROW_DICT = Dict[str, Union[str, int, float, dt.datetime, None]]
+
 def instance_timelines_to_dataframe(
         instance_timelines: dict, stream: str, measurement_name: str,
-        conversion_func: Callable[[str], Any] = None,
+        conversion_func: Callable[[str], Union[str, int, float]] = None,
         source_component: str = None) -> pd.DataFrame:
     """ Converts the timeline dictionaries of a *single metric* into a single
     combined DataFrame for all instances. All timestamps are converted to UTC
@@ -47,26 +50,31 @@ def instance_timelines_to_dataframe(
         supplied dictionary.
     """
 
-    row_dict = Dict[str, Union[str, int, float, dt.datetime]]
+    output: List[ROW_DICT] = []
 
-    output: List[row_dict] = []
-
+    instance_name: str
+    timeline: Dict[str, str]
     for instance_name, timeline in instance_timelines.items():
 
         details = tracker.parse_instance_name(instance_name)
-        instance_list: List[row_dict] = []
+        instance_list: List[ROW_DICT] = []
 
+        timestamp_str: str
+        measurement_str: str
         for timestamp_str, measurement_str in timeline.items():
 
             timestamp: dt.datetime = \
                     dt.datetime.utcfromtimestamp(int(timestamp_str))
 
             if "nan" in measurement_str:
-                measurement: Any = None
+                measurement: Union[str, int, float, None] = None
             else:
-                measurement = conversion_func(measurement_str)
+                if conversion_func:
+                    measurement = conversion_func(measurement_str)
+                else:
+                    measurement = measurement_str
 
-            row: row_dict = {
+            row: ROW_DICT = {
                 "timestamp" : timestamp,
                 "container" : details["container"],
                 "task" : details["task_id"],
@@ -104,6 +112,20 @@ class HeronTMasterClient(HeronMetricsClient):
 
         LOG.info("Created Topology Master metrics client using Heron Tracker "
                  "at: %s", self.tracker_url)
+
+    def __hash__(self) -> int:
+
+        return hash(self.tracker_url)
+
+    def __eq__(self, other: object) -> bool:
+
+        if not isinstance(other, HeronTMasterClient):
+            return False
+
+        if self.tracker_url == other.tracker_url:
+            return True
+
+        return False
 
 
     def get_component_service_times(self, topology_id: str, cluster: str,

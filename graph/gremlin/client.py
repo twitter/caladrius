@@ -33,6 +33,21 @@ class GremlinClient(GraphClient):
         self.graph: Graph = Graph()
         self.connect()
 
+    def __hash__(self) -> int:
+
+        return hash((self.gremlin_server_url, self.graph_name))
+
+    def __eq__(self, other: object) -> bool:
+
+        if not isinstance(other, GremlinClient):
+            return False
+
+        if ((self.gremlin_server_url == other.gremlin_server_url) and
+                (self.graph_name == other.graph_name)):
+            return True
+
+        return False
+
     def connect(self) -> None:
         """ Creates (or refreshes) the remote connection to the gremlin server.
         """
@@ -46,7 +61,7 @@ class GremlinClient(GraphClient):
         except socket_error as serr:
             if serr.errno != errno.ECONNREFUSED:
                 # Not the error we are looking for, re-raise
-                LOG.error("Socket error occured")
+                LOG.error("Socket error occurred")
                 raise serr
             # connection refused
             msg: str = (f"Connection to gremlin sever at: "

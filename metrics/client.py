@@ -9,3 +9,11 @@ class MetricsClient(ABC):
     @abstractmethod
     def __init__(self, config: Dict[str, Any]) -> None:
         self.config = config
+
+    @abstractmethod
+    def __hash__(self) -> int:
+        pass
+
+    @abstractmethod
+    def __eq__(self, other: object) -> bool:
+        pass
