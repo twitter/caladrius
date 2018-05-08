@@ -13,7 +13,8 @@ import pandas as pd
 
 from gremlin_python.process.graph_traversal import \
     (GraphTraversalSource, not_, out, outE, loops, constant, properties, inV,
-     outV, inE)
+     outV, in_)
+from gremlin_python.process.traversal import P
 from gremlin_python.structure.graph import Vertex
 from gremlin_python import statics
 
@@ -25,17 +26,26 @@ from caladrius.graph.analysis.heron.routing_probabilities import \
 
 # Type definitions
 ARRIVAL_RATES = DefaultDict[int, DefaultDict[Tuple[str, str], float]]
+OUTPUT_RATES = DefaultDict[int, Dict[str, float]]
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-def get_levels(graph_client: GremlinClient, topology_id: str,
-               topology_ref: str) -> List[List[Vertex]]:
+def get_levels(topo_traversal: GraphTraversalSource) -> List[List[Vertex]]:
+    """ Gets the levels of the logical graph. The traversal starts with the
+    source spouts and performs a breadth first search through the logically
+    connected vertices.
 
-    LOG.info("Calculating levels for topology %s reference %s", topology_id,
-             topology_ref)
+    Arguments:
+        topo_traversal (GraphTraversalSource):  A traversal source instance
+                                                mapped to the topology subgraph
+                                                whose levels are to be
+                                                calculated.
 
-    topo_traversal: GraphTraversalSource = \
-        graph_client.topology_subgraph(topology_id, topology_ref)
+    Returns:
+        A list where each entry is a list of Vertex instances representing a
+        level within the logical graph. The first level will be the spout
+        instances.
+    """
 
     # Only load the static enums we need so we don't pollute the globals dict
     keys = statics.staticEnums["keys"]
@@ -60,9 +70,6 @@ def get_levels(graph_client: GremlinClient, topology_id: str,
         .order(local_scope).by(keys)
         .select(values).unfold().toList())
 
-    LOG.debug("Found %d levels is topology %s reference %s", len(levels),
-              topology_id, topology_ref)
-
     return levels
 
 @lru_cache()
@@ -73,32 +80,64 @@ def _setup_arrival_calcs(metrics_client: HeronMetricsClient,
                          io_bucket_length: int,
                          **kwargs: Union[str, int, float]
                         ) -> Tuple[pd.DataFrame, List[List[Vertex]],
-                                   pd.DataFrame]:
+                                   pd.DataFrame, Dict[Vertex, List[int]],
+                                   Dict[Vertex, List[int]]]:
+    """ Helper method which sets up the data needed for the arrival rate
+    calculations. This is a separate cached method as these data are not
+    effected by the traffic (spout_state) and so do not need to be recalculated
+    for a new traffic level for the same topology id/ref. """
+
+    topo_traversal: GraphTraversalSource = \
+        graph_client.topology_subgraph(topology_id, topology_ref)
 
     # Calculate the routing probabilities for the defined metric gathering
     # period
-    i_to_i_rps: pd.DataFrame = calculate_inter_instance_rps(
-        metrics_client, topology_id, start, end)
-
-    i2i_rps: pd.Series = i_to_i_rps.set_index(
-        ["source_task", "destination_task", "stream"])["routing_probability"]
+    i2i_rps: pd.Series = calculate_inter_instance_rps(
+        metrics_client, topology_id, start, end).set_index(
+            ["source_task", "destination_task", "stream"]
+        )["routing_probability"]
 
     # Get the vertex levels for the logical graph tree
-    levels: List[List[Vertex]] = get_levels(graph_client, topology_id,
-                                            topology_ref)
+    LOG.info("Calculating levels for topology %s reference %s", topology_id,
+             topology_ref)
+    levels: List[List[Vertex]] = get_levels(topo_traversal)
+    LOG.debug("Found %d levels is topology %s reference %s", len(levels),
+              topology_id, topology_ref)
 
     # Calculate the input output ratios for each instances using data from the
     # defined metrics gathering period
-    io_ratios: pd.DataFrame = lstsq_io_ratios(metrics_client, graph_client,
-                                              topology_id, start, end,
-                                              io_bucket_length, **kwargs)
+    coefficients: pd.Series = lstsq_io_ratios(
+        metrics_client, graph_client, topology_id, start, end,
+        io_bucket_length, **kwargs).set_index(["task", "output_stream",
+                                               "input_stream",
+                                               "source_component"]
+                                             )["coefficient"]
 
-    # Index the coefficients for each input stream
-    coefficients: pd.Series = io_ratios.set_index(
-        ["task", "output_stream", "input_stream",
-         "source_component"])["coefficient"]
+    # Get the details of the incoming and outgoing physical connections for
+    # stream manager in the topology
 
-    return i2i_rps, levels, coefficients
+    # Get a dictionary mapping from stream manager id string to a list of the
+    # instances (within each container) that will send tuples to each stream
+    # manager
+    sending_instances: Dict[Vertex, List[int]] = \
+        (topo_traversal.V().hasLabel("stream_manager")
+         .group().by("id").by(in_("physically_connected")
+                              .hasLabel(P.within("spout", "bolt"))
+                              .values("task_id")
+                              .fold())
+         .next())
+
+    # Get a dictionary mapping from stream manager id string to a list of the
+    # instances (within each container) that will receive tuples from each
+    # stream manager
+    receiving_instances: Dict[Vertex, List[int]] = \
+        (topo_traversal.V().hasLabel("stream_manager")
+         .group().by("id").by(out("physically_connected")
+                              .hasLabel("bolt").values("task_id").fold())
+         .next())
+
+    return (i2i_rps, levels, coefficients, sending_instances,
+            receiving_instances)
 
 def _calculate_arrivals(topo_traversal: GraphTraversalSource,
                         source_vertex: Vertex, arrival_rates: ARRIVAL_RATES,
@@ -187,7 +226,7 @@ def _calculate_outputs(topo_traversal: GraphTraversalSource,
 
     return output_rates
 
-def _convert_to_df(arrival_rates: ARRIVAL_RATES) -> pd.DataFrame:
+def _convert_arrs_to_df(arrival_rates: ARRIVAL_RATES) -> pd.DataFrame:
 
     output: List[Dict[str, Union[str, float]]] = []
 
@@ -203,28 +242,68 @@ def _convert_to_df(arrival_rates: ARRIVAL_RATES) -> pd.DataFrame:
 
     return pd.DataFrame(output)
 
+def _calc_strmgr_in_out(sending_instances: Dict[str, List[int]],
+                        receiving_instances: Dict[str, List[int]],
+                        output_rates: OUTPUT_RATES,
+                        arrival_rates: ARRIVAL_RATES) -> pd.DataFrame:
+
+    strmgr_outgoing: Dict[str, float] = {}
+
+    for stream_manager, sending_task_list in sending_instances.items():
+        total_sent: float = 0.0
+        for task_id in sending_task_list:
+            total_sent += sum(output_rates[task_id].values())
+
+        strmgr_outgoing[stream_manager] = total_sent
+
+    strmgr_incoming: Dict[str, float] = {}
+
+    for stream_manager, receiving_task_list in receiving_instances.items():
+        total_receieved: float = 0.0
+        for task_id in receiving_task_list:
+            total_receieved += sum(arrival_rates[task_id].values())
+
+        strmgr_incoming[stream_manager] = total_receieved
+
+    # Convert the stream manager dictionaries into a DataFrame. It is possible
+    # that a container could only hold spouts (in which chase would have no
+    # entry in the incoming dict) or only sinks (therefore no entries in the
+    # outgoing dict) so take the union of keys from both dicts and add None to
+    # the DF if the key is missing
+    strmgr_output: List[Dict[str, Union[str, float, None]]] = []
+    for strmgr in (set(strmgr_incoming.keys()) or set(strmgr_outgoing.keys())):
+        row: Dict[str, Union[str, float, None]] = {
+            "id" : strmgr,
+            "incoming" : strmgr_incoming.get(strmgr, None),
+            "outgoing" : strmgr_outgoing.get(strmgr, None)}
+        strmgr_output.append(row)
+
+    return pd.DataFrame(strmgr_output)
+
 def calculate_arrival_rates(graph_client: GremlinClient,
                             metrics_client: HeronMetricsClient,
                             topology_id: str, topology_ref: str,
                             start: dt.datetime, end: dt.datetime,
                             io_bucket_length: int,
                             spout_state: Dict[int, Dict[str, float]],
-                            **kwargs: Union[str, int, float]) -> pd.DataFrame:
+                            **kwargs: Union[str, int, float]
+                           ) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
     LOG.info("Calculating arrival rates for topology %s reference %s using "
              "metrics from a %d second period from %s to %s", topology_id,
              topology_ref, (end-start).total_seconds(), start.isoformat(),
              end.isoformat())
 
-    i2i_rps, levels, coefficients = _setup_arrival_calcs(
-        metrics_client, graph_client, topology_id, topology_ref, start, end,
-        io_bucket_length, **kwargs)
+    i2i_rps, levels, coefficients, sending_instances, receiving_instances = \
+        _setup_arrival_calcs(metrics_client, graph_client, topology_id,
+                             topology_ref, start, end, io_bucket_length,
+                             **kwargs)
 
     topo_traversal: GraphTraversalSource = \
         graph_client.topology_subgraph(topology_id, topology_ref)
 
     arrival_rates: ARRIVAL_RATES = defaultdict(lambda: defaultdict(float))
-    output_rates: DefaultDict[int, Dict[str, float]] = defaultdict(dict)
+    output_rates: OUTPUT_RATES = defaultdict(dict)
     output_rates.update(spout_state)
 
     # Step through the tree levels and calculate the output from each level and
@@ -250,4 +329,10 @@ def calculate_arrival_rates(graph_client: GremlinClient,
                                                 arrival_rates, output_rates,
                                                 i2i_rps)
 
-    return _convert_to_df(arrival_rates)
+    # At this stage we have the output and arrival amount for all logically
+    # connected elements. We now need to map these on to the stream managers to
+    # calculate their incoming and outgoing tuple rates.
+    strmgr_in_out: pd.DataFrame = _calc_strmgr_in_out(
+        sending_instances, receiving_instances, output_rates, arrival_rates)
+
+    return _convert_arrs_to_df(arrival_rates), strmgr_in_out

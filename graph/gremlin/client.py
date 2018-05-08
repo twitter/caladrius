@@ -50,6 +50,10 @@ class GremlinClient(GraphClient):
 
     def connect(self) -> None:
         """ Creates (or refreshes) the remote connection to the gremlin server.
+
+        Raises:
+            ConnectionRefusedError: If the gremlin sever at the configured
+                                    address cannot be found.
         """
 
         connect_str: str = f"ws://{self.gremlin_server_url}/gremlin"

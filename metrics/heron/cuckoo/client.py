@@ -428,7 +428,7 @@ class HeronCuckooClient(HeronMetricsClient):
                         "container" : details["container"],
                         "source_component" : details["source_component"],
                         "stream" : details["stream"],
-                        "execute_count" : entry[1]}
+                        "execute_count" : int(entry[1])}
                     output.append(row)
 
         return pd.DataFrame(output)
