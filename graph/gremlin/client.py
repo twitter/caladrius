@@ -118,7 +118,6 @@ class GremlinClient(GraphClient):
             LOG.error(msg)
             raise RuntimeError(msg)
 
-
     def topology_subgraph(self, topology_id: str,
                           topology_ref: str) -> GraphTraversalSource:
         """ Gets a gremlin graph traversal source limited to the sub-graph of
