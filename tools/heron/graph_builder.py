@@ -19,7 +19,7 @@ from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.common.timestamp import get_window_dt_from_now
 
 LOG: logging.Logger = \
-    logging.getLogger("caladrius.tests.tools.heron.graph_builder")
+    logging.getLogger("caladrius.tools.heron.graph_builder")
 
 def create_parser() -> argparse.ArgumentParser:
     """ Helper function for creating the command line arguments parser. """

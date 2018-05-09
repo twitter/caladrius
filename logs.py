@@ -7,7 +7,8 @@ from sys import stdout
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-def setup(logfile: str = None, debug: bool = False) -> None:
+def setup(console: bool = True, logfile: str = None,
+          debug: bool = False) -> None:
     """ This will set up the root Python logger instance and by default will
     attach a stream handler piping all output to stdout. However an optional
     output filename can be specified to preserve the logs. The dubug argument
@@ -15,6 +16,8 @@ def setup(logfile: str = None, debug: bool = False) -> None:
     name information in the log output.
 
     Arguments:
+        console (bool): Optional flag indicating if logs should be output to
+                        standard out
         logfile (str):  Optional path to the output file for the logs.
         debug (bool):   Optional flag (default False) to include debug level
                         output.
@@ -41,11 +44,13 @@ def setup(logfile: str = None, debug: bool = False) -> None:
         formatter = logging.Formatter(("{asctime} | {name} | {levelname} "
                                        "| {message}"), style='{')
 
-    console_handler: logging.StreamHandler = logging.StreamHandler(stdout)
-    console_handler.setFormatter(formatter)
-    top_log.addHandler(console_handler)
+    if console:
+        console_handler: logging.StreamHandler = logging.StreamHandler(stdout)
+        console_handler.setFormatter(formatter)
+        top_log.addHandler(console_handler)
 
     if logfile:
+        LOG.info("Logging to file: %s", logfile)
         file_handler: logging.FileHandler = logging.FileHandler(logfile)
         file_handler.setFormatter(formatter)
         top_log.addHandler(file_handler)

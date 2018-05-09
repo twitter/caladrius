@@ -18,7 +18,7 @@ def get_class(class_path: str) -> Type:
                             pkg.module.ClassName
 
     Returns:
-        The class object reffered to in the supplied class path.
+        The class object referred to in the supplied class path.
 
     Raises:
         ModuleNotFoundError:    If the module part of the class path could not

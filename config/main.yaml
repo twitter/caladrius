@@ -1,41 +1,29 @@
-# Main Caladrius configuration file
+## CALADRIUS CONFIG ##
 
-# Paths to Python classes should be absolute to avoid import errors
+log.file.dir: "/tmp/caladrius/logs"
 
-# Base address for the API data store server
-caladrius.api.datastore.address: 'localhost:8080'
+## GRAPH CONFIG ##
 
-# Graph Database connection url
-caladrius.graph.db.url: 'localhost:8182'
+graph.client: 'caladrius.graph.gremlin.client.GremlinClient'
 
+graph.client.config:
+    gremlin.server.url : "localhost:8182"
 
-###### HERON #######
-
-# Heron tracker service base URL
-heron.tracker.url: 'http://heron-tracker-example.com/'
+## HERON CONFIG ##
 
 # The metrics client to use for Heron topologies
-heron.metrics.client: 'caladrius.metrics.heron.metrics_database.client.MyMetricsClient'
+heron.metrics.client: 'caladrius.metrics.heron.myclient.client.MyMetricsClient'
 
-# Config arguments for the heron metrics client
-heron.metrics.client.config: 
-    database.url: 'https://metrics-db.com/'
-    client.name: 'My-Metrics-client'
-    
-# List of Heron traffic models
-model.traffic.heron:
-    - 'caladrius.model.traffic.heron.dummy_traffic.DummyTrafficModel'
+heron.metrics.client.config:
+    myclient.database.url: "https://my-metrics-database.com"
+    myclient.client.name: "MyClient-Name"
 
-# List of Heron topology performance models for currently deployed topologies
-# with different arrival rates
-model.topology.heron.current:
-    - 'caladrius.model.topology.heron.CurrentTopologyModel'
+heron.tracker.url: "http://heron-tracker.com"
 
-# List of Heron topology performance models for modelling the performance of
-# proposed packing plans
-model.topology.heron.proposed:
-    - 'caladrius.model.topology.heron.QueuingTheoryModel'
+heron.traffic.models:
+    - "caladrius.model.traffic.heron.basic_stats.BasicStatsTrafficModel"
 
-
+heron.traffic.models.config:
+    basicstats.model.default.hours: 24
 
 

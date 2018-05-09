@@ -1,7 +1,7 @@
 """ This module defines abstract base classes for the traffic modelling """
 
 from abc import abstractmethod
-from typing import Any
+from typing import Any, Dict
 
 from caladrius.model.base import Model
 
@@ -9,7 +9,8 @@ class TrafficModel(Model):
     """ Abstract base class for all traffic modelling classes """
 
     @abstractmethod
-    def predict_traffic(self, topology_id: str, **kwargs: Any) -> dict:
+    def predict_traffic(self, topology_id: str, **kwargs: Any
+                       ) -> Dict[str, Any]:
         """ Predicts the expected traffic arriving at the specified topology
         over the period defined by the duration argument.
 

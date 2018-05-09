@@ -9,7 +9,6 @@ requests = "*"
 flask-restful = "*"
 pyyaml = "*"
 gremlinpython = "*"
-ipython = "*"
 
 [dev-packages]
 ipython = "*"

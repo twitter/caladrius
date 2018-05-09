@@ -2,38 +2,46 @@
 modelling """
 
 import logging
+import json
+
+from typing import List, Dict, Type, Any
 
 from flask_restful import Resource, reqparse
+
+from caladrius.model.traffic.model import TrafficModel
+from caladrius.graph.gremlin.client import GremlinClient
+from caladrius.metrics.heron.client import HeronMetricsClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
 class HeronTraffic(Resource):
 
-    def __init__(self, models: list):
-        self.models = models
+    def __init__(self, model_classes: List[Type], model_config: Dict[str, Any],
+                 metrics_client: HeronMetricsClient,
+                 graph_client: GremlinClient) -> None:
+
+        self.models: List[TrafficModel] = []
+        for model_class in model_classes:
+            self.models.append(model_class(model_config, metrics_client,
+                                           graph_client))
+
         self.parser = reqparse.RequestParser()
-        self.parser.add_argument('duration', type=int, required=True,
-                                 help='Duration must be supplied')
-        self.parser.add_argument('units', type=str, required=False)
+        #self.parser.add_argument('hours', type=int, required=False,
+        #                         help='Duration must be supplied')
         super().__init__()
 
-    def get(self, topo_id: str):
+    def get(self, topo_id: str) -> Dict[str, Any]:
 
         args = self.parser.parse_args()
 
-        duration: int = args["duration"]
-        units: str = args.get("units", "m")
+        LOG.info("Traffic prediction requested for Heron topology: %s",
+                 topo_id)
 
-        LOG.info("%d%s traffic prediction requested for Heron topology: %s",
-                 duration, units, topo_id)
+        output: dict = {}
 
-        output = {}
-
-        for model_class in self.models:
-            #TODO: Figure out how to supply client connections objects?
-            model = model_class()
-            LOG.info("Running traffic prediction model %s for topology %s "
-                     "over %d%s", model.name, topo_id, duration, units)
-            output.update(model.predict_traffic(topo_id, duration))
+        for model in self.models:
+            LOG.info("Running traffic prediction model %s for topology %s ",
+                     model.name, topo_id)
+            output[model.name] = model.predict_traffic(topo_id, **args)
 
         return output

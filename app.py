@@ -1,20 +1,53 @@
 """ This module contains the main program for Caladrius and will set up all
 resources and start the API server """
 
+import sys
 import logging
+import argparse
 
-from caladrius.logs import get_top_level_logger
+from typing import Dict, Any
+
+from caladrius import logs
+from caladrius import loader
 from caladrius.api.router import create_router
+
+LOG: logging.Logger = logging.getLogger("caladrius.main")
+
+def create_parser() -> argparse.ArgumentParser:
+
+    parser: argparse.ArgumentParser = argparse.ArgumentParser()
+
+    parser.add_argument("-c", "--config", required=True,
+                        help=("Path to the config file with data required by "
+                              "all configured models and classes"))
+    parser.add_argument("-q", "--quiet", required=False, action="store_true",
+                        help=("Optional flag indicating if console log output "
+                              "should be suppressed"))
+    parser.add_argument("--debug", required=False, action="store_true",
+                        help=("Optional flag indicating if debug level "
+                              "information should be displayed"))
+
+    return parser
 
 if __name__ == "__main__":
 
-    TOP_LOG: logging.Logger = get_top_level_logger()
+    ARGS: argparse.Namespace = create_parser().parse_args()
 
-    CONFIG: dict = {
-        "model.traffic.heron" :
-            ["caladrius.model.traffic.heron.dummy_traffic.DummyTrafficModel"]
-        }
+    try:
+        CONFIG: Dict[str, Any] = loader.load_config(ARGS.config)
+    except FileNotFoundError:
+        print(f"Config file: {ARGS.config} was not found. Aborting...",
+              file=sys.stderr)
+        sys.exit(1)
+    else:
+        if not ARGS.quiet:
+            print("\nStarting Caladrius API...\n")
+            print(f"Loading configuration from file: {ARGS.config}")
+
+    logs.setup(console=ARGS.quiet,
+               logfile=(CONFIG["log.file.dir"] + "/app.log"),
+               debug=ARGS.debug)
 
     ROUTER = create_router(CONFIG)
 
-    ROUTER.run()
+    ROUTER.run(debug=ARGS.debug)

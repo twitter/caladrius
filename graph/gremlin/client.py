@@ -12,16 +12,15 @@ from gremlin_python.process.strategies import SubgraphStrategy
 from gremlin_python.driver.driver_remote_connection \
         import DriverRemoteConnection
 
-from caladrius.graph.client import GraphClient
 from caladrius.config.keys import ConfKeys
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-class GremlinClient(GraphClient):
+class GremlinClient(object):
     """ Graph client implementation for the TinkerPop Gremlin Server """
 
     def __init__(self, config: dict, graph_name: str = "g") -> None:
-        super().__init__(config)
+        self.config: dict = config
         self.gremlin_server_url: str = \
             self.config[ConfKeys.GREMLIN_SERVER_URL.value]
 
