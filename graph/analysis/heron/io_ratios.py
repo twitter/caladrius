@@ -15,7 +15,8 @@ from caladrius.graph.gremlin.client import GremlinClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-def get_in_out_components(graph_client: GremlinClient, topology_id: str) -> List[str]:
+def get_in_out_components(graph_client: GremlinClient,
+                          topology_id: str) -> List[str]:
     """ Gets a list of components that have both incoming and outgoing streams.
 
     Arguments:

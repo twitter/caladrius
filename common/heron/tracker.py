@@ -8,6 +8,8 @@ from typing import List, Dict, Union, Any, Tuple
 
 import requests
 
+import pandas as pd
+
 LOG: logging.Logger = logging.getLogger(__name__)
 
 # Define Types
@@ -16,6 +18,56 @@ LPLAN_BOLTS = Dict[str, Dict[str, Union[List[str], List[Dict[str, str]]]]]
 LOGICAL_PLAN = Dict[str, Union[int, LPLAN_SPOUTS, LPLAN_BOLTS]]
 
 #pylint: disable=too-many-arguments
+
+def get_topologies(tracker_url: str, cluster: str = None,
+                   environ: str = None) -> pd.DataFrame:
+    """ Gets the details from the Heron Tracker API of all registered
+    topologies. The results can be limited to a specific cluster and
+    environment.
+
+    Arguments:
+        tracker_url (str):  The base url string for the Heron Tracker instance.
+        cluster (str):  Optional cluster to limit search results to.
+        environ (str):  Optional environment to limit the search to (eg. prod,
+                        devel, test, etc).
+
+    Returns:
+        A dictionary
+
+    Raises:
+        requests.HTTPError: If a non 200 status code is returned.
+    """
+    LOG.info("Fetching list of available topologies")
+
+    topo_url: str = tracker_url + "/topologies"
+
+    response: requests.Response = requests.get(topo_url,
+                                               params={"cluster" : cluster,
+                                                       "environ" : environ})
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as err:
+        LOG.error("Request for topology list for cluster: %s, environment: %s "
+                  "failed with error code: %s", cluster, environ,
+                  str(response.status_code))
+        raise err
+
+    results: Dict[str, Any] = response.json()["result"]
+
+    output: List[Dict[str, str]] = []
+
+    for cluster_name, cluster_dict in results.items():
+        for user, user_dict in cluster_dict.items():
+            for environment, topology_list in user_dict.items():
+                for topology in topology_list:
+                    row: Dict[str, str] = {
+                        "cluster" : cluster_name,
+                        "user" : user,
+                        "environ" : environment,
+                        "topology" : topology}
+                    output.append(row)
+
+    return pd.DataFrame(output)
 
 def get_logical_plan(tracker_url: str, cluster: str, environ: str,
                      topology: str) -> LOGICAL_PLAN:
