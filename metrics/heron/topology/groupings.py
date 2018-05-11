@@ -1,6 +1,8 @@
+""" This module contains methods for analysing and summarising the groupings
+within Heron topologies. """
 import logging
 
-from typing import Set, Tuple, Dict, Any, Union, DefaultDict
+from typing import Set, Tuple, Dict, Any, DefaultDict
 from collections import defaultdict
 
 import pandas as pd
@@ -11,8 +13,8 @@ from common.heron import tracker
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-def summary(tracker_url: str, topology_id: str, cluster: str, environ:str
-           ) -> Dict[str, int]:
+def summary(tracker_url: str, topology_id: str, cluster: str,
+            environ: str) -> Dict[str, int]:
 
     lplan: Dict[str, Any] = tracker.get_logical_plan(tracker_url, cluster,
                                                      environ, topology_id)
@@ -26,7 +28,7 @@ def summary(tracker_url: str, topology_id: str, cluster: str, environ:str
                             input_stream["grouping"]))
 
     grouping_counts: DefaultDict[str, int] = defaultdict(int)
-    for stream, source_component, grouping in stream_set:
+    for _, source_component, grouping in stream_set:
         grouping_counts[grouping] += 1
 
         # Now look at the inputs in to this source component and count the
@@ -36,7 +38,7 @@ def summary(tracker_url: str, topology_id: str, cluster: str, environ:str
                 in_grouping: str = in_stream["grouping"]
                 grouping_counts[in_grouping + "->" + grouping] += 1
 
-    return grouping_counts
+    return dict(grouping_counts)
 
 def summerise(tracker_url: str) -> pd.DataFrame:
 
@@ -66,3 +68,14 @@ def summerise(tracker_url: str) -> pd.DataFrame:
     output = output.merge(topologies, on="topology")
 
     return output
+
+def has_fields_fields(tracker_url: str, topology_id: str, cluster: str,
+                      environ: str) -> bool:
+
+    grouping_summary: Dict[str, int] = summary(tracker_url, topology_id,
+                                               cluster, environ)
+
+    if "FIELDS->FIELDS" in grouping_summary:
+        return True
+
+    return False

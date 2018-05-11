@@ -13,7 +13,6 @@ gremlinpython = "*"
 [dev-packages]
 ipython = "*"
 pylint = "*"
-pytest = "*"
 sphinx = "*"
 mypy = "*"
 

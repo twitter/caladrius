@@ -2,6 +2,7 @@
 Heron Topology Master instance. """
 
 import logging
+import warnings
 
 import datetime as dt
 
@@ -21,6 +22,53 @@ LOG: logging.Logger = logging.getLogger(__name__)
 
 # Type definitions
 ROW_DICT = Dict[str, Union[str, int, float, dt.datetime, None]]
+
+def time_check(start: dt.datetime, end: dt.datetime,
+               time_limit_hrs: float) -> None:
+    """ Checks the time period, defined by the supplied start and end points,
+    against the period defined from now back by the supplied time limit in
+    hours.
+
+    Arguments:
+        start (dt.datetime):    The start of the time period. Should be UTC.
+        end (dt.datetime):  The end of the time period. Should be UTC.
+        time_limit_hrs (float): The number of hours back from now that define
+                                the allowed time period.
+
+    Raises:
+        RuntimeError:   If the supplied time period is not within the defined
+                        limit or if the end time is before the start time.
+    """
+
+    if end < start:
+        msg: str = (f"The supplied end time ({end.isoformat}) is before the "
+                    f"supplied start time ({start.isoformat}). No data will "
+                    f"be returned.")
+        LOG.error(msg)
+        raise RuntimeError(msg)
+
+    now: dt.datetime = dt.datetime.now(dt.timezone.utc)
+    limit: dt.datetime = now - dt.timedelta(hours=time_limit_hrs)
+
+    if start < limit and end < limit:
+        limit_msg: str = (f"The defined time period ({start.isoformat()} to "
+                          f"{end.isoformat()}) is outside of the "
+                          f"{time_limit_hrs} hours of data stored by the "
+                          f"Topology Master. No data will be returned.")
+        LOG.error(limit_msg)
+        raise RuntimeError(limit_msg)
+
+    if start < limit and end > limit:
+        truncated_duration: float = round(((end - limit).total_seconds() /
+                                           3600), 2)
+        truncated_msg: str = (f"The start ({start.isoformat()}) of the "
+                              f"supplied time window is beyond the "
+                              f"{time_limit_hrs} hours stored by the Topology "
+                              f"Master. Results will be limited to "
+                              f"{truncated_duration} hours from "
+                              f"{limit.isoformat()} to {end.isoformat()}")
+        LOG.warning(truncated_msg)
+        warnings.warn(truncated_msg, RuntimeWarning)
 
 def instance_timelines_to_dataframe(
         instance_timelines: dict, stream: str, measurement_name: str,
@@ -109,6 +157,8 @@ class HeronTMasterClient(HeronMetricsClient):
     def __init__(self, config: dict) -> None:
         super().__init__(config)
         self.tracker_url = config[ConfKeys.HERON_TRACKER_URL.value]
+        self.time_limit_hrs = \
+            config.get(ConfKeys.HERON_TMASTER_METRICS_MAX_HOURS.value, 3)
 
         LOG.info("Created Topology Master metrics client using Heron Tracker "
                  "at: %s", self.tracker_url)
@@ -249,10 +299,7 @@ class HeronTMasterClient(HeronMetricsClient):
         logical_plan: Dict[str, Any] = tracker.get_logical_plan(
             self.tracker_url, cluster, environ, topology_id)
 
-        if (end-start) > dt.timedelta(hours=3):
-            LOG.warning("The specified metrics gathering window is greater "
-                        "than the 3 hours that the TMaster stores. Results "
-                        "will be limited to the last 3 hours of data.")
+        time_check(start, end, self.time_limit_hrs)
 
         start_time: int = int(round(start.timestamp()))
         end_time: int = int(round(end.timestamp()))
@@ -393,9 +440,14 @@ class HeronTMasterClient(HeronMetricsClient):
                      lead to this metric came from.
             emit_count: The emit count during the metric time period.
         """
-
-        cluster: str = cast(str, kwargs["cluster"])
-        environ: str = cast(str, kwargs["environ"])
+        try:
+            cluster: str = cast(str, kwargs["cluster"])
+            environ: str = cast(str, kwargs["environ"])
+        except KeyError as kerr:
+            ke_msg: str = (f"Keyword argument: {kerr.args[0]} should be "
+                           f"supplied.")
+            LOG.error(ke_msg)
+            raise RuntimeError(ke_msg)
 
         logical_plan: Dict[str, Any] = tracker.get_logical_plan(
             self.tracker_url, cluster, environ, topology_id)
@@ -405,10 +457,7 @@ class HeronTMasterClient(HeronMetricsClient):
         components: List[str] = (list(logical_plan["spouts"].keys()) +
                                  list(logical_plan["bolts"].keys()))
 
-        if (end-start) > dt.timedelta(hours=3):
-            LOG.warning("The specified metrics gathering window is greater "
-                        "than the 3 hours that the TMaster stores. Results "
-                        "will be limited to the last 3 hours of data.")
+        time_check(start, end, self.time_limit_hrs)
 
         start_time: int = int(round(start.timestamp()))
         end_time: int = int(round(end.timestamp()))
@@ -559,10 +608,7 @@ class HeronTMasterClient(HeronMetricsClient):
         logical_plan: Dict[str, Any] = tracker.get_logical_plan(
             self.tracker_url, cluster, environ, topology_id)
 
-        if (end-start) > dt.timedelta(hours=3):
-            LOG.warning("The specified metrics gathering window is greater "
-                        "than the 3 hours that the TMaster stores. Results "
-                        "will be limited to the last 3 hours of data.")
+        time_check(start, end, self.time_limit_hrs)
 
         start_time: int = int(round(start.timestamp()))
         end_time: int = int(round(end.timestamp()))

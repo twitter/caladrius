@@ -21,8 +21,10 @@ from gremlin_python import statics
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.analysis.heron.io_ratios import lstsq_io_ratios
-from caladrius.graph.analysis.heron.routing_probabilities import \
-    calculate_inter_instance_rps
+
+# TODO: make this function configurable
+from caladrius.metrics.heron.topology.routing_probabilities import \
+    calc_current_inter_instance_rps as calculate_inter_instance_rps
 
 # Type definitions
 ARRIVAL_RATES = DefaultDict[int, DefaultDict[Tuple[str, str], float]]
@@ -93,7 +95,7 @@ def _setup_arrival_calcs(metrics_client: HeronMetricsClient,
     # Calculate the routing probabilities for the defined metric gathering
     # period
     i2i_rps: pd.Series = calculate_inter_instance_rps(
-        metrics_client, topology_id, start, end).set_index(
+        metrics_client, topology_id, start, end, **kwargs).set_index(
             ["source_task", "destination_task", "stream"]
         )["routing_probability"]
 
@@ -176,7 +178,7 @@ def _calculate_arrivals(topo_traversal: GraphTraversalSource,
         LOG.debug("Output from %s-%d to %s-%d on stream %s is "
                   "calculated as %f", source_component, source_task,
                   out_edge["destination_component"], destination_task,
-                  edge_output, edge_output)
+                  stream, edge_output)
 
         arrival_rates[destination_task][
             (stream, source_component)] += edge_output
@@ -288,6 +290,24 @@ def calculate_arrival_rates(graph_client: GremlinClient,
                             spout_state: Dict[int, Dict[str, float]],
                             **kwargs: Union[str, int, float]
                            ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+
+    Arguments:
+        io_bucket_length (int): The length in seconds that metrics should be
+                                aggregated for use in IO ratio calculations.
+        spout_state (dict): A dictionary mapping from instance task id to a
+                            dictionary that maps from output stream name to the
+                            output rate for that spout instance. The units of
+                            this rate (TPS, TPM etc) will be the same for the
+                            arrival rates.
+
+    Returns:
+        instance_arrival_rates: A DataFrame containing the arrival rate at each
+                                instance.
+        stream_manager_input_output_rates:  A DataFrame containing the input
+                                            and output rate of each stream
+                                            manager.
+    """
 
     LOG.info("Calculating arrival rates for topology %s reference %s using "
              "metrics from a %d second period from %s to %s", topology_id,
@@ -307,7 +327,8 @@ def calculate_arrival_rates(graph_client: GremlinClient,
     output_rates.update(spout_state)
 
     # Step through the tree levels and calculate the output from each level and
-    # the arrivals at the next
+    # the arrivals at the next. Skip the final level as its arrival rates are
+    # calculated in the previous step and it has not outputs.
     for level_number, level in enumerate(levels[:-1]):
 
         LOG.debug("Processing topology level %d", level_number)

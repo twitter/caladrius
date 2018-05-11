@@ -206,14 +206,18 @@ def _create_physical_connections(graph_client: GremlinClient, topology_id: str,
 
     LOG.debug("Processing %d logical connections", len(logical_pairs))
 
+    # TODO: This method involves multiple traversals for each logical
+    # connections (of which there could be hundred of thousands in a large
+    # topology). This need to be optimised and traversals moved out of the loop
+    # where possible
+    # TODO: Move the source & destination container, and source and destination
+    # stream manager queries to the traversal above using a projection.
     for pair in logical_pairs:
         source = pair["source"]
         destination = pair["destination"]
         logical_edge = pair["l_edge"]
 
         # Are these instances within the same container
-        # TODO: There is probably a better Gremlin query to do this
-        # automatically
         source_container: Vertex = (graph_client.graph_traversal
                                     .V(source)
                                     .out("is_within")

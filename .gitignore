@@ -10,3 +10,8 @@
 
 # MyPy 
 .mypy_cache/*
+
+# Pyre
+.pyre_configuration
+.pyre/*
+

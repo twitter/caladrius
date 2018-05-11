@@ -4,7 +4,7 @@ https://twitter.github.io/heron/docs/operators/heron-tracker-api/
 """
 import logging
 
-from typing import List, Dict, Union, Any, Tuple
+from typing import List, Dict, Union, Any, Tuple, cast
 
 import requests
 
@@ -405,3 +405,33 @@ def get_outgoing_streams(logical_plan: Dict[str, Any],
     return [output_stream["stream_name"]
             for output_stream
             in logical_plan[comp_type][component_name]["outputs"]]
+
+def get_component_task_ids(tracker_url: str, cluster: str, environ: str,
+                           topology: str) -> Dict[str, List[int]]:
+    """ Get a dictionary mapping from component name to a list of integer task
+    id for the instances belonging to that component.
+
+    Arguments:
+        tracker_url (str):  The base url string for the Heron Tracker instance.
+        cluster (str):  The cluster the topology is running in.
+        environ (str):  The environment the topology is running in (eg. prod,
+                        devel, test, etc).
+        topology (str): The topology name.
+
+    Returns:
+        A dictionary mapping from component name to a list of integer task
+        id for the instances belonging to that component.
+    """
+
+    pplan: Dict[str, Any] = get_physical_plan(tracker_url, cluster, environ,
+                                              topology)
+
+    output: Dict[str, List[int]] = {}
+
+    for comp_type in ["bolts", "spouts"]:
+        for comp_name, instance_list in pplan[comp_type].items():
+            output[comp_name] = [cast(int,
+                                      parse_instance_name(i_name)["task_id"])
+                                 for i_name in instance_list]
+
+    return output
