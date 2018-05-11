@@ -103,7 +103,7 @@ if __name__ == "__main__":
                                                       ARGS.topology)
 
 
-    GRAPH_CLIENT: GremlinClient = GremlinClient(CONFIG)
+    GRAPH_CLIENT: GremlinClient = GremlinClient(CONFIG["graph.client.config"])
 
     builder.create_physical_graph(GRAPH_CLIENT,
                                   ARGS.topology, ARGS.reference,
