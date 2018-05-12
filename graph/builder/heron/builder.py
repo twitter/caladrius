@@ -9,7 +9,8 @@ import datetime as dt
 from typing import List, Dict, Union, Any
 
 from gremlin_python.process.traversal import P
-from gremlin_python.process.graph_traversal import __
+from gremlin_python.process.graph_traversal import \
+    GraphTraversalSource, out, outV, addE, inV
 from gremlin_python.structure.graph import Vertex, Edge
 
 from caladrius.common.heron import tracker
@@ -27,6 +28,8 @@ def _create_stream_managers(graph_client: GremlinClient, topology_id: str,
                            ) -> None:
 
     LOG.info("Creating stream managers and container vertices")
+
+    counter: int = 0
 
     for stream_manager in physical_plan["stmgrs"].values():
 
@@ -61,13 +64,21 @@ def _create_stream_managers(graph_client: GremlinClient, topology_id: str,
         (graph_client.graph_traversal.V(strmg).addE("is_within").to(cont)
          .next())
 
+        counter += 1
+
+    LOG.info("Created %d container and stream manager vertices", counter)
+
 def _create_spouts(graph_client: GremlinClient, topology_id: str,
                    topology_ref: str,
                    physical_plan: Dict[str, Any],
                    logical_plan: Dict[str, Any]) -> None:
 
+    LOG.info("Creating spout instance vertices")
+
     # Create the spouts
     physical_spouts: Dict[str, List[str]] = physical_plan["spouts"]
+
+    counter: int = 0
 
     for spout_name, spout_data in logical_plan["spouts"].items():
         LOG.debug("Creating vertices for instances of spout component: %s",
@@ -106,13 +117,20 @@ def _create_spouts(graph_client: GremlinClient, topology_id: str,
                 )
              .next())
 
+            counter += 1
+
+    LOG.info("Created %d spout instances", counter)
+
 def _create_bolts(graph_client: GremlinClient, topology_id: str,
                   topology_ref: str,
                   physical_plan: Dict[str, Any],
                   logical_plan: Dict[str, Any]) -> None:
 
-    # Create all the bolt vertices
+    LOG.info("Creating bolt instance vertices")
+
     physical_bolts: Dict[str, List[str]] = physical_plan["bolts"]
+
+    counter: int = 0
 
     for bolt_name in logical_plan["bolts"]:
         LOG.debug("Creating vertices for instances of bolt component: %s",
@@ -148,6 +166,10 @@ def _create_bolts(graph_client: GremlinClient, topology_id: str,
                 )
              .next())
 
+            counter += 1
+
+    LOG.info("Created %d bolt instances", counter)
+
 def _create_logical_connections(graph_client: GremlinClient, topology_id: str,
                                 topology_ref: str,
                                 logical_plan: Dict[str, Any]
@@ -157,6 +179,11 @@ def _create_logical_connections(graph_client: GremlinClient, topology_id: str,
     LOG.info("Adding logical connections to topology %s instances",
              topology_id)
 
+    topo_traversal: GraphTraversalSource = \
+        graph_client.topology_subgraph(topology_id, topology_ref)
+
+    counter: int = 0
+
     for bolt_name, bolt_data in logical_plan["bolts"].items():
 
         LOG.debug("Adding logical connections for instances of "
@@ -164,28 +191,28 @@ def _create_logical_connections(graph_client: GremlinClient, topology_id: str,
 
         # Get a list of all instance vertices for this bolt
         destination_instances: List[Vertex] = (
-            graph_client.graph_traversal.V()
-            .has("topology_id", topology_id)
-            .has("topology_ref", topology_ref)
+            topo_traversal.V()
             .has("component", bolt_name)
             .toList())
 
         for incoming_stream in bolt_data["inputs"]:
             source_instances: List[Vertex] = (
-                graph_client.graph_traversal.V()
-                .has("topology_id", topology_id)
-                .has("topology_ref", topology_ref)
+                topo_traversal.V()
                 .has("component", incoming_stream["component_name"])
                 .toList())
 
             for destination in destination_instances:
                 for source in source_instances:
-                    (graph_client.graph_traversal.V(source)
+                    (topo_traversal.V(source)
                      .addE("logically_connected")
                      .property("stream",
                                incoming_stream["stream_name"])
                      .property("grouping", incoming_stream["grouping"])
                      .to(destination).next())
+
+                    counter += 1
+
+    LOG.info("Created %d logical connections", counter)
 
 def _create_physical_connections(graph_client: GremlinClient, topology_id: str,
                                  topology_ref: str) -> None:
@@ -193,56 +220,43 @@ def _create_physical_connections(graph_client: GremlinClient, topology_id: str,
     LOG.info("Creating physical connections for topology: %s, reference: "
              "%s", topology_id, topology_ref)
 
-    # First get all logically connected pairs
-    logical_pairs: List[Dict[str, Union[Vertex, Edge]]] = (
-        graph_client.graph_traversal.V()
-        .has("topology_id", topology_id)
-        .has("topology_ref", topology_ref)
-        .hasLabel(P.within("bolt", "spout")).as_("source")
-        .outE("logically_connected").as_("l_edge")
-        .inV().as_("destination")
-        .select("source", "l_edge", "destination")
+    topo_traversal: GraphTraversalSource = \
+        graph_client.topology_subgraph(topology_id, topology_ref)
+
+    # First get all logically connected pairs of vertex and their associated
+    # containers and stream managers
+    logical_edges: List[Dict[str, Union[Vertex, Edge]]] = (
+        topo_traversal.V().hasLabel(P.within("bolt", "spout"))
+        .outE("logically_connected")
+        .project("source_instance", "source_container",
+                 "source_stream_manager", "l_edge", "destination_instance",
+                 "destination_container", "destination_stream_manager")
+        .by(outV())
+        .by(outV().out("is_within"))
+        .by(outV().out("is_within").in_("is_within").hasLabel("stream_manager"))
+        .by()
+        .by(inV())
+        .by(inV().out("is_within"))
+        .by(inV().out("is_within").in_("is_within").hasLabel("stream_manager"))
         .toList())
 
-    LOG.debug("Processing %d logical connections", len(logical_pairs))
+    LOG.debug("Processing %d logical connected vertices", len(logical_edges))
 
-    # TODO: This method involves multiple traversals for each logical
-    # connections (of which there could be hundred of thousands in a large
-    # topology). This need to be optimised and traversals moved out of the loop
-    # where possible
-    # TODO: Move the source & destination container, and source and destination
-    # stream manager queries to the traversal above using a projection.
-    for pair in logical_pairs:
-        source = pair["source"]
-        destination = pair["destination"]
-        logical_edge = pair["l_edge"]
-
-        # Are these instances within the same container
-        source_container: Vertex = (graph_client.graph_traversal
-                                    .V(source)
-                                    .out("is_within")
-                                    .hasLabel("container")
-                                    .next())
-
-        destination_container: Vertex = (graph_client.graph_traversal
-                                         .V(destination)
-                                         .out("is_within")
-                                         .hasLabel("container")
-                                         .next())
-
-        # Get the source stream manager, which will be the start of the
-        # physical connection path
-        source_strmg: Vertex = (graph_client.graph_traversal
-                                .V(source_container)
-                                .in_("is_within")
-                                .hasLabel("stream_manager")
-                                .next())
+    for logical_edge in logical_edges:
+        source: Vertex = logical_edge["source_instance"]
+        source_container: Vertex = logical_edge["source_container"]
+        source_stream_manager: Vertex = logical_edge["source_stream_manager"]
+        destination: Vertex = logical_edge["destination_instance"]
+        destination_container: Vertex = logical_edge["destination_container"]
+        destination_stream_manager: Vertex = \
+            logical_edge["destination_stream_manager"]
+        l_edge: Edge = logical_edge["l_edge"]
 
         # Connect the source instance to its stream manager, checking first
         # if the connection already exists
         (graph_client.graph_traversal.V(source)
-         .coalesce(__.out("physically_connected").is_(source_strmg),
-                   __.addE("physically_connected").to(source_strmg))
+         .coalesce(out("physically_connected").is_(source_stream_manager),
+                   addE("physically_connected").to(source_stream_manager))
          .next())
 
         if source_container == destination_container:
@@ -252,39 +266,31 @@ def _create_physical_connections(graph_client: GremlinClient, topology_id: str,
             # the source stream manager found above. Connect the source
             # stream manager to the destination instance
 
-            (graph_client.graph_traversal.V(source_strmg)
-             .coalesce(__.out("physically_connected").is_(destination),
-                       __.addE("physically_connected").to(destination))
+            (graph_client.graph_traversal.V(source_stream_manager)
+             .coalesce(out("physically_connected").is_(destination),
+                       addE("physically_connected").to(destination))
              .next())
 
             # Set the logical edge for this pair to "local"
-            (graph_client.graph_traversal.E(logical_edge)
-             .property("type", "local").next())
+            graph_client.graph_traversal.E(l_edge).property("type",
+                                                            "local").next()
 
         else:
-
-            # Get the share stream manager for the destination instance
-            destination_strmg: Vertex = (graph_client.graph_traversal
-                                         .V(destination_container)
-                                         .in_("is_within")
-                                         .hasLabel("stream_manager")
-                                         .next())
-
             # Connect the two stream managers (if they aren't already)
-            (graph_client.graph_traversal.V(source_strmg)
+            (graph_client.graph_traversal.V(source_stream_manager)
              .coalesce(
-                 __.out("physically_connected").is_(destination_strmg),
-                 __.addE("physically_connected").to(destination_strmg))
+                 out("physically_connected").is_(destination_stream_manager),
+                 addE("physically_connected").to(destination_stream_manager))
              .next())
 
-            (graph_client.graph_traversal.V(destination_strmg)
-             .coalesce(__.out("physically_connected").is_(destination),
-                       __.addE("physically_connected").to(destination))
+            (graph_client.graph_traversal.V(destination_stream_manager)
+             .coalesce(out("physically_connected").is_(destination),
+                       addE("physically_connected").to(destination))
              .next())
 
             # Set the logical edge for this pair to "remote"
-            (graph_client.graph_traversal.E(logical_edge)
-             .property("type", "remote").next())
+            graph_client.graph_traversal.E(l_edge).property("type",
+                                                            "remote").next()
 
 def create_physical_graph(graph_client: GremlinClient,
                           topology_id: str, topology_ref: str,
