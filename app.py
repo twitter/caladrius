@@ -1,6 +1,7 @@
 """ This module contains the main program for Caladrius and will set up all
 resources and start the API server """
 
+import os
 import sys
 import logging
 import argparse
@@ -15,7 +16,10 @@ LOG: logging.Logger = logging.getLogger("caladrius.main")
 
 def create_parser() -> argparse.ArgumentParser:
 
-    parser: argparse.ArgumentParser = argparse.ArgumentParser()
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(
+        description=("This is the command line interface for the Caladrius API"
+                     " server"))
+
 
     parser.add_argument("-c", "--config", required=True,
                         help=("Path to the config file with data required by "
@@ -44,9 +48,12 @@ if __name__ == "__main__":
             print("\nStarting Caladrius API...\n")
             print(f"Loading configuration from file: {ARGS.config}")
 
-    logs.setup(console=ARGS.quiet,
-               logfile=(CONFIG["log.file.dir"] + "/app.log"),
-               debug=ARGS.debug)
+    if not os.path.exists(CONFIG["log.file.dir"]):
+        os.makedirs(CONFIG["log.file.dir"])
+
+    LOG_FILE: str = CONFIG["log.file.dir"] + "/app.log"
+
+    logs.setup(console=(not ARGS.quiet), logfile=LOG_FILE, debug=ARGS.debug)
 
     ROUTER = create_router(CONFIG)
 

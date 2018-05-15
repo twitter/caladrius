@@ -1,10 +1,10 @@
 """ This module defines abstract base classes for the topology performance
 modelling """
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Any
 
-from caladrius.model.model import Model
+from caladrius.model.base import Model
 
 class TopologyModel(Model):
     """ Abstract base class for all topology performance modelling classes """

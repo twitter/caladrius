@@ -9,17 +9,19 @@ from flask import Flask
 from flask_restful import Api
 
 from caladrius import loader
+from caladrius.config.keys import ConfKeys
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.api.model.topology.heron import HeronCurrent, HeronProposed
-from caladrius.api.model.traffic.heron import HeronTraffic
+from caladrius.api.model.traffic.heron import HeronTraffic, HeronTrafficModels
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-def _load_traffic_models(config: Dict[str, Any], dsps_name: str) -> List[Type]:
+def _get_model_classes(config: Dict[str, Any], dsps_name: str,
+                       model_type: str) -> List[Type]:
 
     model_classes: List[Type] = [loader.get_class(model) for model in
-                                 config[f"{dsps_name}.traffic.models"]]
+                                 config[f"{dsps_name}.{model_type}.models"]]
 
     return model_classes
 
@@ -58,10 +60,10 @@ def create_router(config: Dict[str, Any]) -> Flask:
     #### TRAFFIC MODEL ENDPOINTS ####
 
     heron_traffic_model_classes: List[Type] = \
-        _load_traffic_models(config, "heron")
+            _get_model_classes(config, "heron", "traffic")
 
-    api.add_resource(HeronTraffic,
-                     '/model/traffic/heron/<string:topo_id>',
+    api.add_resource(HeronTrafficModels,
+                     "/model/traffic/heron/model_info",
                      resource_class_kwargs={
                          'model_classes': heron_traffic_model_classes,
                          'model_config': config["heron.traffic.models.config"],
@@ -69,15 +71,36 @@ def create_router(config: Dict[str, Any]) -> Flask:
                          'graph_client': graph_client}
                     )
 
+    api.add_resource(HeronTraffic,
+                     '/model/traffic/heron/<string:topology_id>',
+                     resource_class_kwargs={
+                         'model_classes': heron_traffic_model_classes,
+                         'model_config': config["heron.traffic.models.config"],
+                         'metrics_client' : heron_metrics_client,
+                         'graph_client': graph_client}
+                    )
+
+    #### TOPOLOGY MODEL ENDPOINTS ####
+
+    heron_topology_model_classes: List[Type] = \
+            _get_model_classes(config, "heron", "topology")
+
     #### CURRENT TOPOLOGY MODELS ####
 
-    api.add_resource(HeronCurrent,
-                     '/model/topology/heron/current/<string:topo_id>')
+    api.add_resource(
+        HeronCurrent, '/model/topology/heron/current/<string:topology_id>',
+        resource_class_kwargs={
+            'model_classes': heron_topology_model_classes,
+            'model_config': config["heron.topology.models.config"],
+            'metrics_client' : heron_metrics_client,
+            'graph_client': graph_client,
+            'tracker_url' : config[ConfKeys.HERON_TRACKER_URL.value]}
+        )
 
     #### PROPOSED TOPOLOGY MODELS ####
 
     api.add_resource(HeronProposed,
-                     '/model/topology/heron/proposed/<string:topo_id>')
+                     '/model/topology/heron/proposed/<string:topology_id>')
 
     LOG.info("REST API router created")
 

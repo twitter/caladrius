@@ -8,13 +8,39 @@ from typing import List, Dict, Type, Any
 
 from flask_restful import Resource, reqparse
 
-from caladrius.model.traffic.model import TrafficModel
+from caladrius.model.traffic.base import TrafficModel
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.metrics.heron.client import HeronMetricsClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+class HeronTrafficModels(Resource):
+
+    def __init__(self, model_classes: List[Type], model_config: Dict[str, Any],
+                 metrics_client: HeronMetricsClient,
+                 graph_client: GremlinClient) -> None:
+
+        models: List[TrafficModel] = []
+        for model_class in model_classes:
+            models.append(model_class(model_config, metrics_client,
+                                           graph_client))
+
+        self.models_info: Dict[str, Any] = {"config" : model_config,
+                                            "models" : []}
+
+        for model in models:
+            model_info: Dict[str, str] = {}
+            model_info["name"] = model.name
+            model_info["description"] = model.description
+            self.models_info["models"].append(model_info)
+
+    def get(self) -> Dict[str, Any]:
+
+        return self.models_info
+
 class HeronTraffic(Resource):
+    """ This resource handles requests for traffic modelling of specific
+    topologies. """
 
     def __init__(self, model_classes: List[Type], model_config: Dict[str, Any],
                  metrics_client: HeronMetricsClient,
@@ -26,12 +52,12 @@ class HeronTraffic(Resource):
                                            graph_client))
 
         self.parser = reqparse.RequestParser()
-        #self.parser.add_argument('hours', type=int, required=False,
-        #                         help='Duration must be supplied')
         super().__init__()
 
     def get(self, topo_id: str) -> Dict[str, Any]:
 
+        # Any parameters included with the get request will be passed to the
+        # TrafficModel instances
         args = self.parser.parse_args()
 
         LOG.info("Traffic prediction requested for Heron topology: %s",

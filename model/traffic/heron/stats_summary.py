@@ -9,11 +9,15 @@ from typing import List, Dict, Any
 
 import pandas as pd
 
-from caladrius.model.traffic.model import TrafficModel
+from caladrius.model.traffic.base import TrafficModel
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.gremlin.client import GremlinClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
+
+DESCRIPTION: str = ("Provides summary traffic statistics for the specified "
+                    "topology. Statistics are based on emit count metrics "
+                    "from the topologies spout instances.")
 
 SUMMARY_DICT = Dict[str, float]
 
@@ -22,7 +26,7 @@ class StatsSummaryTrafficModel(TrafficModel):
     def __init__(self, config: dict, metrics_client: HeronMetricsClient,
                  graph_client: GremlinClient) -> None:
         super().__init__(config, metrics_client, graph_client,
-                         "stats_summary_traffic_model")
+                         "stats_summary_traffic_model", DESCRIPTION)
         self.default_hours: int = config["stats.summary.model.default.hours"]
 
     def predict_traffic(self, topology_id: str, **kwargs: int

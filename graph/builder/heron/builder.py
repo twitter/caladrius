@@ -326,7 +326,7 @@ def create_physical_graph(graph_client: GremlinClient,
         LOG.error(msg)
         raise RuntimeError(msg)
 
-    LOG.info("Building physical graph for topology %s reference %s",
+    LOG.info("Building physical graph for topology %s with reference %s",
              topology_id, topology_ref)
 
     _create_stream_managers(graph_client, topology_id, topology_ref,

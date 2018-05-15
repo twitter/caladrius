@@ -45,6 +45,7 @@ def setup(console: bool = True, logfile: str = None,
                                        "| {message}"), style='{')
 
     if console:
+        print("Logging to standard out", file=stdout)
         console_handler: logging.StreamHandler = logging.StreamHandler(stdout)
         console_handler.setFormatter(formatter)
         top_log.addHandler(console_handler)

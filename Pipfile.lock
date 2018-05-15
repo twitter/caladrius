@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "4e255dbe8974310c261e0bad44af92246f91dd1689b21e053c2c715dc0c54c55"
+            "sha256": "5aa6deb086d860ea0b319ea9939cdf6d2992d3e1555669d03d4c9934a53891e2"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -69,11 +69,11 @@
         },
         "gremlinpython": {
             "hashes": [
-                "sha256:4e8ac7df81cc90071b056be3f8934695f0fea70b5916c30a47b662111d7c4105",
-                "sha256:bafd7797031221571b8bcb22d54466143172f42f2e7b061f79cc942e4a4eb4ba"
+                "sha256:104b5c2f76127c5598e2e7242d19e929ec6d2a373bc2687518525bd84d851de3",
+                "sha256:ba6950a8b3ef9f3bf8077ec547dded01ae8d9aca1843e419ed440518914e7f6c"
             ],
             "index": "pypi",
-            "version": "==3.3.2"
+            "version": "==3.3.3"
         },
         "idna": {
             "hashes": [
@@ -94,6 +94,14 @@
                 "sha256:f84be1bb0040caca4cea721fcbbbbd61f9be9464ca236387158b0feea01914a4"
             ],
             "version": "==2.10"
+        },
+        "kazoo": {
+            "hashes": [
+                "sha256:a29fa579812a2c5dd8241eafb8328b8a8673f140903a6102e017129aa223d0c7",
+                "sha256:a7c2d1d7ddb047c936d368e31b08a93bb327ffa46606fe85f550a37ce608c29b"
+            ],
+            "index": "pypi",
+            "version": "==2.4.0"
         },
         "markupsafe": {
             "hashes": [

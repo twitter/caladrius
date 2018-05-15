@@ -9,6 +9,7 @@ requests = "*"
 flask-restful = "*"
 pyyaml = "*"
 gremlinpython = "*"
+kazoo = "*"
 
 [dev-packages]
 ipython = "*"
