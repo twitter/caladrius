@@ -15,18 +15,21 @@ from caladrius.graph.gremlin.client import GremlinClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-DESCRIPTION: str = ("Provides summary traffic statistics for the specified "
-                    "topology. Statistics are based on emit count metrics "
-                    "from the topologies spout instances.")
-
 SUMMARY_DICT = Dict[str, float]
 
 class StatsSummaryTrafficModel(TrafficModel):
 
+    name: str = "stats_summary_traffic_model"
+
+    description: str = ("Provides summary traffic statistics for the "
+                        "specified topology. Statistics are based on emit "
+                        "count metrics from the topologies spout instances.")
+
     def __init__(self, config: dict, metrics_client: HeronMetricsClient,
                  graph_client: GremlinClient) -> None:
-        super().__init__(config, metrics_client, graph_client,
-                         "stats_summary_traffic_model", DESCRIPTION)
+
+        super().__init__(config, metrics_client, graph_client)
+
         self.default_hours: int = config["stats.summary.model.default.hours"]
 
     def predict_traffic(self, topology_id: str, **kwargs: int

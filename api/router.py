@@ -2,6 +2,7 @@
 classes and create routing logic for the Caladrius API. """
 
 import logging
+import warnings
 
 from typing import List, Dict, Any, Type
 
@@ -12,7 +13,8 @@ from caladrius import loader
 from caladrius.config.keys import ConfKeys
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.metrics.heron.client import HeronMetricsClient
-from caladrius.api.model.topology.heron import HeronCurrent, HeronProposed
+from caladrius.api.model.topology.heron import \
+    HeronTopologyModels, HeronCurrent, HeronProposed
 from caladrius.api.model.traffic.heron import HeronTraffic, HeronTrafficModels
 
 LOG: logging.Logger = logging.getLogger(__name__)
@@ -20,8 +22,26 @@ LOG: logging.Logger = logging.getLogger(__name__)
 def _get_model_classes(config: Dict[str, Any], dsps_name: str,
                        model_type: str) -> List[Type]:
 
-    model_classes: List[Type] = [loader.get_class(model) for model in
-                                 config[f"{dsps_name}.{model_type}.models"]]
+    model_classes: List[Type] = []
+
+    for model in config[f"{dsps_name}.{model_type}.models"]:
+        model_class: Type = loader.get_class(model)
+
+        if model_class.name == "base":
+            name_msg: str = (f"Model class {str(model_class)} does not have a "
+                             f"'name' class property defined. This is required"
+                             f" for it to be correctly identified in the API")
+            LOG.error(name_msg)
+            raise RuntimeError(name_msg)
+
+        if model_class.description == "base":
+            desc_msg: str = (f"Model class {str(model_class)} does not have a "
+                             f"'description' class property defined. This is "
+                             f"recommended for use in the API")
+            LOG.warning(desc_msg)
+            warnings.warn(desc_msg)
+
+        model_classes.append(model_class)
 
     return model_classes
 
@@ -66,9 +86,7 @@ def create_router(config: Dict[str, Any]) -> Flask:
                      "/model/traffic/heron/model_info",
                      resource_class_kwargs={
                          'model_classes': heron_traffic_model_classes,
-                         'model_config': config["heron.traffic.models.config"],
-                         'metrics_client' : heron_metrics_client,
-                         'graph_client': graph_client}
+                         'model_config': config["heron.traffic.models.config"]}
                     )
 
     api.add_resource(HeronTraffic,
@@ -84,6 +102,16 @@ def create_router(config: Dict[str, Any]) -> Flask:
 
     heron_topology_model_classes: List[Type] = \
             _get_model_classes(config, "heron", "topology")
+
+    #### MODEL INFORMATION ENDPOINT ####
+
+    api.add_resource(HeronTopologyModels,
+                     "/model/topology/heron/model_info",
+                     resource_class_kwargs={
+                         'model_classes': heron_topology_model_classes,
+                         'model_config':
+                             config["heron.topology.models.config"]}
+                    )
 
     #### CURRENT TOPOLOGY MODELS ####
 

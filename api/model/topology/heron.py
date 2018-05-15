@@ -13,6 +13,25 @@ from caladrius.model.topology.base import TopologyModel
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+class HeronTopologyModels(Resource):
+
+    def __init__(self, model_classes: List[Type],
+                 model_config: Dict[str, Any]) -> None:
+
+        self.models_info: List[Dict[str, Any]] = []
+
+        for model in model_classes:
+            model_info: Dict[str, str] = {}
+            model_info["name"] = model.name
+            model_info["description"] = model.description
+            self.models_info.append(model_info)
+
+    def get(self) -> List[Dict[str, Any]]:
+        """ Returns the configured traffic models as a list of model
+        information dictionaries that contain "name" and "description" keys.
+        """
+        return self.models_info
+
 class HeronCurrent(Resource):
 
     def __init__(self, model_classes: List[Type], model_config: Dict[str, Any],

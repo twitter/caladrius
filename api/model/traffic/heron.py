@@ -16,26 +16,22 @@ LOG: logging.Logger = logging.getLogger(__name__)
 
 class HeronTrafficModels(Resource):
 
-    def __init__(self, model_classes: List[Type], model_config: Dict[str, Any],
-                 metrics_client: HeronMetricsClient,
-                 graph_client: GremlinClient) -> None:
+    def __init__(self, model_classes: List[Type],
+            model_config: Dict[str, Any]) -> None:
 
-        models: List[TrafficModel] = []
-        for model_class in model_classes:
-            models.append(model_class(model_config, metrics_client,
-                                           graph_client))
 
-        self.models_info: Dict[str, Any] = {"config" : model_config,
-                                            "models" : []}
+        self.models_info: List[Dict[str, Any]] = []
 
-        for model in models:
+        for model in model_classes:
             model_info: Dict[str, str] = {}
             model_info["name"] = model.name
             model_info["description"] = model.description
-            self.models_info["models"].append(model_info)
+            self.models_info.append(model_info)
 
-    def get(self) -> Dict[str, Any]:
-
+    def get(self) -> List[Dict[str, Any]]:
+        """ Returns the configured traffic models as a list of model
+        information dictionaries that contain "name" and "description" keys.
+        """
         return self.models_info
 
 class HeronTraffic(Resource):
