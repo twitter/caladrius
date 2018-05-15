@@ -23,25 +23,36 @@ def _get_model_classes(config: Dict[str, Any], dsps_name: str,
                        model_type: str) -> List[Type]:
 
     model_classes: List[Type] = []
+    model_names: List[str] = []
 
     for model in config[f"{dsps_name}.{model_type}.models"]:
         model_class: Type = loader.get_class(model)
 
         if model_class.name == "base":
-            name_msg: str = (f"Model class {str(model_class)} does not have a "
+            name_msg: str = (f"Model {str(model_class)} does not have a "
                              f"'name' class property defined. This is required"
-                             f" for it to be correctly identified in the API")
+                             f" for it to be correctly identified in the API.")
             LOG.error(name_msg)
             raise RuntimeError(name_msg)
 
+        if model_class.name in model_names:
+            other_model_index: int = model_names.index(model_class.name)
+            dup_msg: str = (f"The model {str(model_class)} has the same 'name'"
+                            f" class property as "
+                            f"{str(model_classes[other_model_index])}. The "
+                            f"names of models should be unique.")
+            LOG.error(dup_msg)
+            raise RuntimeError(dup_msg)
+
         if model_class.description == "base":
-            desc_msg: str = (f"Model class {str(model_class)} does not have a "
+            desc_msg: str = (f"Model {str(model_class)} does not have a "
                              f"'description' class property defined. This is "
-                             f"recommended for use in the API")
+                             f"recommended for use in the API.")
             LOG.warning(desc_msg)
             warnings.warn(desc_msg)
 
         model_classes.append(model_class)
+        model_names.append(model_class.name)
 
     return model_classes
 

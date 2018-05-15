@@ -66,11 +66,13 @@ class HeronCurrent(Resource):
     def get(self, topology_id: str) -> dict:
         args = self.parser.parse_args()
 
+        # Make sure we have a current graph representing the physical plan for
+        # the topology
         topology_ref: str = graph_check(self.graph_client, self.model_config,
                                         self.tracker_url, args["cluster"],
                                         args["environ"], topology_id)
 
-        if args["model"] == "all":
+        if args["model"].lower() == "all":
             models = self.models.keys()
         else:
             models = args["model"]
