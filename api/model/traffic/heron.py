@@ -50,20 +50,21 @@ class HeronTraffic(Resource):
         self.parser = reqparse.RequestParser()
         super().__init__()
 
-    def get(self, topo_id: str) -> Dict[str, Any]:
+    def get(self, topology_id: str) -> Dict[str, Any]:
 
         # Any parameters included with the get request will be passed to the
         # TrafficModel instances
-        args = self.parser.parse_args()
+        request_args = self.parser.parse_args()
 
         LOG.info("Traffic prediction requested for Heron topology: %s",
-                 topo_id)
+                 topology_id)
 
         output: dict = {}
 
         for model in self.models:
             LOG.info("Running traffic prediction model %s for topology %s ",
-                     model.name, topo_id)
-            output[model.name] = model.predict_traffic(topo_id, **args)
+                     model.name, topology_id)
+            output[model.name] = model.predict_traffic(topology_id,
+                                                       **request_args)
 
         return output
