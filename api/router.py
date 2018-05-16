@@ -96,18 +96,17 @@ def create_router(config: Dict[str, Any]) -> Flask:
     api.add_resource(HeronTrafficModels,
                      "/model/traffic/heron/model_info",
                      resource_class_kwargs={
-                         'model_classes': heron_traffic_model_classes,
-                         'model_config': config["heron.traffic.models.config"]}
-                    )
+                         'model_classes': heron_traffic_model_classes})
 
-    api.add_resource(HeronTraffic,
-                     '/model/traffic/heron/<string:topology_id>',
-                     resource_class_kwargs={
-                         'model_classes': heron_traffic_model_classes,
-                         'model_config': config["heron.traffic.models.config"],
-                         'metrics_client' : heron_metrics_client,
-                         'graph_client': graph_client}
-                    )
+    api.add_resource(
+        HeronTraffic,
+        '/model/traffic/heron/<string:topology_id>',
+        resource_class_kwargs={
+            'model_classes': heron_traffic_model_classes,
+            'model_config': config["heron.traffic.models.config"],
+            'metrics_client' : heron_metrics_client,
+            'graph_client': graph_client,
+            'tracker_url' : config[ConfKeys.HERON_TRACKER_URL.value]})
 
     #### TOPOLOGY MODEL ENDPOINTS ####
 
@@ -116,13 +115,11 @@ def create_router(config: Dict[str, Any]) -> Flask:
 
     #### MODEL INFORMATION ENDPOINT ####
 
-    api.add_resource(HeronTopologyModels,
-                     "/model/topology/heron/model_info",
-                     resource_class_kwargs={
-                         'model_classes': heron_topology_model_classes,
-                         'model_config':
-                             config["heron.topology.models.config"]}
-                    )
+    api.add_resource(
+        HeronTopologyModels,
+        "/model/topology/heron/model_info",
+        resource_class_kwargs={
+            'model_classes': heron_topology_model_classes})
 
     #### CURRENT TOPOLOGY MODELS ####
 

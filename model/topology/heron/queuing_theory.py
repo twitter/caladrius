@@ -8,9 +8,14 @@ class QTTopologyModel(TopologyModel):
 
     name: str = "queuing_theory_topology_model"
 
-    description: str = "Models the topology as a queuing network"
+    description: str = ("Models the topology as a queuing network and flags "
+                        "if back pressure is likely at instances.")
 
-    def __init__(self, config: Dict[str, Any],
-                 metrics_client: HeronMetricsClient,
-                 graph_client: GremlinClient) -> None:
+    def predict_current_performanc(self, topology_id: str,
+                                   spout_state: Dict[int, Dict[str, float]]
+                                  ) -> Dict[str, Any]:
+        # Get the service time for all elements
+        # metrics_client.get_service_times()
+
+        # Predict Arrival Rates for all elements
         pass

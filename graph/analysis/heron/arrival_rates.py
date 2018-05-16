@@ -293,6 +293,17 @@ def calculate_arrival_rates(graph_client: GremlinClient,
     """
 
     Arguments:
+        graph_client (GremlinClient):   The client instance for the graph
+                                        database.
+        metric_client (HeronMetricsClient): The client instance for the
+                                            metrics database.
+        topology_id (str):  The topology identification string.
+        topology_ref (str): The reference string for the topology physical
+                            graph to be used in the calculations.
+        start (dt.datetime):    The UTC datetime instance representing the
+                                start of the metric gathering window.
+        end (dt.datetime):  The UTC datetime instance representing the end of
+                            the metric gathering window.
         io_bucket_length (int): The length in seconds that metrics should be
                                 aggregated for use in IO ratio calculations.
         spout_state (dict): A dictionary mapping from instance task id to a
@@ -300,6 +311,8 @@ def calculate_arrival_rates(graph_client: GremlinClient,
                             output rate for that spout instance. The units of
                             this rate (TPS, TPM etc) will be the same for the
                             arrival rates.
+        **kwargs:   Any additional key word arguments required by the metrics
+                    client query methods.
 
     Returns:
         instance_arrival_rates: A DataFrame containing the arrival rate at each
@@ -307,7 +320,15 @@ def calculate_arrival_rates(graph_client: GremlinClient,
         stream_manager_input_output_rates:  A DataFrame containing the input
                                             and output rate of each stream
                                             manager.
+
+    Raises:
+        RuntimeError:   If there is no entry in the graph database for the
+                        supplied topology id and ref.
     """
+
+    # First check that there is a physical graph for the supplied reference in
+    # the graph database
+    graph_client.raise_if_missing(topology_id, topology_ref)
 
     LOG.info("Calculating arrival rates for topology %s reference %s using "
              "metrics from a %d second period from %s to %s", topology_id,

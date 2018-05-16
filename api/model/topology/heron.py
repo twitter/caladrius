@@ -14,9 +14,9 @@ from caladrius.model.topology.base import TopologyModel
 LOG: logging.Logger = logging.getLogger(__name__)
 
 class HeronTopologyModels(Resource):
+    """ Resource class for the Heron topology model information end point."""
 
-    def __init__(self, model_classes: List[Type],
-                 model_config: Dict[str, Any]) -> None:
+    def __init__(self, model_classes: List[Type]) -> None:
 
         self.models_info: List[Dict[str, Any]] = []
 
@@ -64,18 +64,20 @@ class HeronCurrent(Resource):
         super().__init__()
 
     def get(self, topology_id: str) -> dict:
-        args = self.parser.parse_args()
+
+        request_args = self.parser.parse_args()
 
         # Make sure we have a current graph representing the physical plan for
         # the topology
         topology_ref: str = graph_check(self.graph_client, self.model_config,
-                                        self.tracker_url, args["cluster"],
-                                        args["environ"], topology_id)
+                                        self.tracker_url,
+                                        request_args["cluster"],
+                                        request_args["environ"], topology_id)
 
-        if args["model"].lower() == "all":
+        if request_args["model"].lower() == "all":
             models = self.models.keys()
         else:
-            models = args["model"]
+            models = request_args["model"]
 
         for model_name in models:
             LOG.info("Running topology performance model %s", model_name)

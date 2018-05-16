@@ -64,10 +64,12 @@ def most_recent_graph_ref(graph_client: GremlinClient, topology_id: str
 
 def _physical_plan_still_current(topology_id: str,
                                  most_recent_graph_ts: dt.datetime,
-                                 zk_connection: str, zk_root_node: str) -> bool:
+                                 zk_connection: str, zk_root_node: str,
+                                 zk_time_offset: int) -> bool:
 
     recent_topo_update_ts: dt.datetime = \
-        zookeeper.last_topo_update_ts(zk_connection, zk_root_node, topology_id)
+        zookeeper.last_topo_update_ts(zk_connection, zk_root_node, topology_id,
+                                      zk_time_offset)
 
     if most_recent_graph_ts > recent_topo_update_ts:
         return True
@@ -131,7 +133,8 @@ def graph_check(graph_client: GremlinClient, zk_config: Dict[str, Any],
     elif not _physical_plan_still_current(
             topology_id, most_recent_graph[1],
             zk_config["heron.statemgr.connection.string"],
-            zk_config["heron.statemgr.root.path"]):
+            zk_config["heron.statemgr.root.path"],
+            zk_config["zk.time.offset"]):
 
         LOG.info("The physical plan for topology %s has changed since "
                  "the last physical graph (reference: %s) was built",

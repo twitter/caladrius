@@ -5,7 +5,7 @@ import logging
 
 import datetime as dt
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 
 import pandas as pd
 
@@ -30,23 +30,26 @@ class StatsSummaryTrafficModel(TrafficModel):
 
         super().__init__(config, metrics_client, graph_client)
 
-        self.default_hours: int = config["stats.summary.model.default.hours"]
+        self.default_source_hours: int = \
+            config["stats.summary.model.default.source.hours"]
 
-    def predict_traffic(self, topology_id: str, **kwargs: int
-                       ) -> Dict[str, Any]:
+    def predict_traffic(self, topology_id: str,
+                        source_hours: float = 0.0,
+                        **kwargs: Union[str, int, float]) -> Dict[str, Any]:
+
+        if not source_hours:
+            LOG.warning("source_hours parameter (indicating how many hours of "
+                        "historical data to summarise) was not provided, "
+                        "using default value of %d hours",
+                        self.default_source_hours)
+            source_hours = self.default_source_hours
+
 
         LOG.info("Predicting traffic for topology %s using statistics summary "
                  "model", topology_id)
 
-        if "hours" not in kwargs:
-            LOG.warning("'hours' parameter (indicating how many hours of "
-                        "historical data to summarise) was not provided, using"
-                        " default value of %d hours", self.default_hours)
-
-        hours: int = kwargs.get("hours", self.default_hours)
-
         end: dt.datetime = dt.datetime.now(dt.timezone.utc)
-        start: dt.datetime = end - dt.timedelta(hours=hours)
+        start: dt.datetime = end - dt.timedelta(hours=source_hours)
 
         spout_comps: List[str] = (self.graph_client.graph_traversal.V()
                                   .has("topology_id", topology_id)
