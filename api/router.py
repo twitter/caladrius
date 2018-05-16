@@ -19,9 +19,29 @@ from caladrius.api.model.traffic.heron import HeronTraffic, HeronTrafficModels
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-def _get_model_classes(config: Dict[str, Any], dsps_name: str,
-                       model_type: str) -> List[Type]:
+def get_model_classes(config: Dict[str, Any], dsps_name: str,
+                      model_type: str) -> List[Type]:
+    """ Helper method that loads model classes and checks for name and
+    description properties.
 
+    Arguments:
+        config (dict):  The main configuration dictionary containing the model
+                        class paths under "{dsps_name}.{model_type}.models"
+                        key.
+        dsps_name (str):    The name of the streaming system whose models are
+                            to be loaded.
+        model_type (str):   The model type, traffic, topology etc.
+
+    Returns:
+        A list of Model Types.
+
+    Raises:
+        RuntimeError:   If a model class does not have a name class property
+                        set and also if the name property of one model is the
+                        same as another.
+        UserWarning:    If a model class does not have the description class
+                        property set.
+    """
     model_classes: List[Type] = []
     model_names: List[str] = []
 
@@ -91,7 +111,7 @@ def create_router(config: Dict[str, Any]) -> Flask:
     #### TRAFFIC MODEL ENDPOINTS ####
 
     heron_traffic_model_classes: List[Type] = \
-            _get_model_classes(config, "heron", "traffic")
+            get_model_classes(config, "heron", "traffic")
 
     api.add_resource(HeronTrafficModels,
                      "/model/traffic/heron/model_info",
@@ -111,7 +131,7 @@ def create_router(config: Dict[str, Any]) -> Flask:
     #### TOPOLOGY MODEL ENDPOINTS ####
 
     heron_topology_model_classes: List[Type] = \
-            _get_model_classes(config, "heron", "topology")
+            get_model_classes(config, "heron", "topology")
 
     #### MODEL INFORMATION ENDPOINT ####
 

@@ -17,7 +17,7 @@ from caladrius.config.keys import ConfKeys
 LOG: logging.Logger = logging.getLogger(__name__)
 
 class GremlinClient(object):
-    """ Graph client implementation for the TinkerPop Gremlin Server """
+    """ Client class for the TinkerPop Gremlin Server """
 
     def __init__(self, config: dict, graph_name: str = "g") -> None:
         self.config: dict = config

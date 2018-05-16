@@ -55,6 +55,11 @@ if __name__ == "__main__":
 
     logs.setup(console=(not ARGS.quiet), logfile=LOG_FILE, debug=ARGS.debug)
 
-    ROUTER = create_router(CONFIG)
+    try:
+        ROUTER = create_router(CONFIG)
+    except ConnectionRefusedError as cr_err:
+        if ARGS.quiet:
+            print(str(cr_err), file=sys.stderr)
+        sys.exit(1)
 
     ROUTER.run(debug=ARGS.debug)
