@@ -6,16 +6,26 @@ import logging
 
 import datetime as dt
 
+from typing import Dict
+
 import requests
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
 TOPO_UPDATED_SEARCH_STR: str = \
-    (r"mtime</td><td>(?P<date>\w+ \d+, \d+ \d+:\d+ \w.\w.) "
-     r"\((?P<hours>\d+)\shours, (?P<mins>\d+)\sminutes ago\)")
+    (r"ctime</td><td>(?P<date>\w+ \d+, \d+ \d+:\d+ \w.\w.) "
+     r"\(((?P<months>\d+)\smonths?,)?\s?"
+     r"((?P<weeks>\d+)\sweeks?,)?\s?"
+     r"((?P<days>\d+)\sdays?,)?\s?"
+     r"((?P<hours>\d+)\shours?,?)?\s?"
+     r"((?P<minutes>\d+\sminutes?))?"
+     r"\sago\)")
+
+DATE_FORMAT: str = "%B %d, %Y %I:%M %p"
 
 def last_topo_update_ts(zk_connection: str, zk_root_node: str,
-                        topology_id: str) -> dt.datetime:
+                        topology_id: str, zk_time_offset: int = 0
+                       ) -> dt.datetime:
     """ This method will attempt to obtain a timestamp of the most recent
     physical plan uploaded to the zookeeper cluster. To do this it simply
     parses the HTML returned by a GET request to pplan node for the specified
@@ -25,10 +35,15 @@ def last_topo_update_ts(zk_connection: str, zk_root_node: str,
         zk_connection (str): The connection string for the zookeeper cluster.
         zk_root_node (str): The path to the root node used for Heron child
                             nodes.
+        topology_id (str): The topology identification string.
+        zk_time_offset (int): Optional offset amount for the Zookeeper server
+                              clock in hours from UTC. If not supplied it will
+                              be assumed that the times given by zookeeper are
+                              in UTC.
 
     Returns:
-        A datetime object representing the UTC datetime of the last update to
-        the physical plan.
+        A timezone aware datetime object representing the time of the last
+        update to the physical plan.
 
     Raises:
         requests.HTTPError: If a non-200 status code is returned by the get
@@ -38,7 +53,7 @@ def last_topo_update_ts(zk_connection: str, zk_root_node: str,
     """
 
     zk_str: str = \
-        f"http://{zk_connection}/{zk_root_node}/pplans/{topology_id}"
+        f"http://{zk_connection}/{zk_root_node}/pplans/{topology_id}/"
 
     response: requests.Response = requests.get(zk_str)
 
@@ -52,10 +67,13 @@ def last_topo_update_ts(zk_connection: str, zk_root_node: str,
         LOG.error(err_msg)
         raise RuntimeError(err_msg)
 
-    hours: int = int(result.groupdict()["hours"])
-    mins: int = int(result.groupdict()["mins"])
+    time_dict: Dict[str, str] = result.groupdict()
 
-    last_updated_ts: dt.datetime = (dt.datetime.now(dt.timezone.utc) -
-                                    dt.timedelta(hours=hours, minutes=mins))
+    last_updated: dt.datetime = \
+        dt.datetime.strptime(time_dict["date"].replace(".", ""), DATE_FORMAT)
 
-    return last_updated_ts
+    zk_tz: dt.timezone = dt.timezone(dt.timedelta(hours=zk_time_offset))
+
+    last_updated_tz: dt.datetime = last_updated.replace(tzinfo=zk_tz)
+
+    return last_updated_tz
