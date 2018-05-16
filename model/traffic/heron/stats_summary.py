@@ -5,7 +5,7 @@ import logging
 
 import datetime as dt
 
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, cast
 
 import pandas as pd
 
@@ -18,6 +18,8 @@ LOG: logging.Logger = logging.getLogger(__name__)
 SUMMARY_DICT = Dict[str, float]
 
 class StatsSummaryTrafficModel(TrafficModel):
+    """ This model provides summary statistics for the spout instances emit
+    metrics (traffic)."""
 
     name: str = "stats_summary_traffic_model"
 
@@ -30,20 +32,38 @@ class StatsSummaryTrafficModel(TrafficModel):
 
         super().__init__(config, metrics_client, graph_client)
 
+        self.metrics_client: HeronMetricsClient
         self.default_source_hours: int = \
             config["stats.summary.model.default.source.hours"]
 
     def predict_traffic(self, topology_id: str,
-                        source_hours: float = 0.0,
                         **kwargs: Union[str, int, float]) -> Dict[str, Any]:
+        """ This method will provide a summary of the emit counts from the
+        spout instances of the specified topology. It will summarise the emit
+        metrics over the number of hours defined by the source_hours keyword
+        argument and provide summary statistics (mean, median, min, max and
+        quantiles) over all instances and for each individual instance.
 
-        if not source_hours:
+        Arguments:
+            topology_id (str):  The topology ID string
+            **source_hours (int):   Optional keyword argument for the number of
+                                    hours (backwards from now) of metrics data
+                                    to summarise.
+        Returns:
+            A dictionary with top level keys for "overall" statistics and
+            "instances=" with summary statistics for each instance. The summary
+            dictionaries have keys for each of the provided statistics linking
+            to a float value for that statistic.
+        """
+
+        if "source_hours" not in kwargs:
             LOG.warning("source_hours parameter (indicating how many hours of "
                         "historical data to summarise) was not provided, "
                         "using default value of %d hours",
                         self.default_source_hours)
-            source_hours = self.default_source_hours
+            source_hours: int = self.default_source_hours
 
+        source_hours = cast(int, kwargs["source_hours"])
 
         LOG.info("Predicting traffic for topology %s using statistics summary "
                  "model", topology_id)
@@ -65,14 +85,15 @@ class StatsSummaryTrafficModel(TrafficModel):
         output: Dict[str, Any] = {}
 
         output["details"] = {"start": start.isoformat(),
-                             "end" : end.isoformat()}
+                             "end" : end.isoformat(),
+                             "source_hours" : source_hours}
 
         overall: Dict[str, float] = {}
 
         quantiles: List[int] = [10, 90, 95, 99]
 
         overall["mean"] = float(spout_emit_counts.emit_count.mean())
-        overall["median"] = float(spout_emit_counts.emit_count.mean())
+        overall["median"] = float(spout_emit_counts.emit_count.median())
         overall["max"] = float(spout_emit_counts.emit_count.max())
         overall["min"] = float(spout_emit_counts.emit_count.min())
         for quantile in quantiles:
@@ -85,7 +106,7 @@ class StatsSummaryTrafficModel(TrafficModel):
         for task_id, task_data in spout_emit_counts.groupby("task"):
             instance: SUMMARY_DICT = {}
             instance["mean"] = float(task_data.emit_count.mean())
-            instance["median"] = float(task_data.emit_count.mean())
+            instance["median"] = float(task_data.emit_count.median())
             instance["max"] = float(task_data.emit_count.max())
             instance["min"] = float(task_data.emit_count.min())
             for quantile in quantiles:
