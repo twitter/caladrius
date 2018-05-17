@@ -32,7 +32,12 @@ def get_topologies(tracker_url: str, cluster: str = None,
                         devel, test, etc).
 
     Returns:
-        A dictionary
+        A DataFrame containing details of all topologies registered with the
+        Heron tracker. This has the columns for:
+        topology: The topology ID
+        cluster: The cluster the topology is running on
+        environ: The environment the topology is running in
+        user: The user that uploaded the topology
 
     Raises:
         requests.HTTPError: If a non 200 status code is returned.

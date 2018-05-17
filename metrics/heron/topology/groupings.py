@@ -15,7 +15,22 @@ LOG: logging.Logger = logging.getLogger(__name__)
 
 def summary(tracker_url: str, topology_id: str, cluster: str,
             environ: str) -> Dict[str, int]:
+    """ Gets a summary of the numbers of each stream grouping type in the
+    specified topology.
 
+    Arguments:
+        tracker_url (str):  The URL for the Heron Tracker API
+        topology_id (str):  The topology ID string
+        cluster (str):  The name of the cluster the topology is running on
+        environ (str):  The environment the topology is running in
+
+    Returns:
+        A dictionary mapping from stream grouping name to the count for the
+        number of these type of stream groupings in the topology. Also includes
+        counts for stream combination, e.g. SHUFFLE->FIELDS : 2 implies that
+        there are 2 cases where the source component of a fields grouped stream
+        has an incoming shuffle grouped stream.
+    """
     lplan: Dict[str, Any] = tracker.get_logical_plan(tracker_url, cluster,
                                                      environ, topology_id)
 
@@ -41,7 +56,22 @@ def summary(tracker_url: str, topology_id: str, cluster: str,
     return dict(grouping_counts)
 
 def summerise(tracker_url: str) -> pd.DataFrame:
+    """ Summarises the stream grouping counts of all topologies registered with
+    the supplied Tracker instance.
 
+    Arguments:
+        tracker_url (str):  The URL for the Heron Tracker API
+
+    Returns:
+        A DataFrame with columns for:
+        topology: The topology ID
+        cluster: The cluster the topology is running on
+        environ: The environment the topology is running in
+        user: The user that uploaded the topology
+        A column for each type of stream grouping as well as combinations of
+        stream grouping (incoming grouping)->(outgoing grouping) and their
+        associate frequency count for each topology.
+    """
     topologies: pd.DataFrame = tracker.get_topologies(tracker_url)
 
     output: pd.DataFrame = None
@@ -71,6 +101,20 @@ def summerise(tracker_url: str) -> pd.DataFrame:
 
 def has_fields_fields(tracker_url: str, topology_id: str, cluster: str,
                       environ: str) -> bool:
+    """ Performs a check to see if the specified topology has components
+    connected via a fields grouping where the source component of that
+    connection also receives a fields grouping.
+
+    Arguments:
+        tracker_url (str):  The URL for the Heron Tracker API
+        topology_id (str):  The topology ID string
+        cluster (str):  The name of the cluster the topology is running on
+        environ (str):  The environment the topology is running in
+
+    Returns:
+        A boolean indicating if there is a field grouping source that also
+        receives a fields grouping.
+    """
 
     grouping_summary: Dict[str, int] = summary(tracker_url, topology_id,
                                                cluster, environ)
