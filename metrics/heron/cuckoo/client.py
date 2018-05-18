@@ -334,7 +334,7 @@ class HeronCuckooClient(HeronMetricsClient):
                         "container" : details["container"],
                         "source_component" : details["source_component"],
                         "stream" : details["stream"],
-                        "latency_ms" : entry[1] / 1000}
+                        "latency_ms" : entry[1] / 1000000.0}
                     output.append(row)
 
         return pd.DataFrame(output)
