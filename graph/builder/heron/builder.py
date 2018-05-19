@@ -329,6 +329,8 @@ def create_physical_graph(graph_client: GremlinClient,
     LOG.info("Building physical graph for topology %s with reference %s",
              topology_id, topology_ref)
 
+    start: dt.datetime = dt.datetime.now()
+
     _create_stream_managers(graph_client, topology_id, topology_ref,
                             physical_plan)
 
@@ -342,6 +344,9 @@ def create_physical_graph(graph_client: GremlinClient,
                                 logical_plan)
 
     _create_physical_connections(graph_client, topology_id, topology_ref)
+
+    LOG.info("Physical graph construction completed after %d seconds",
+             (dt.datetime.now() - start).total_seconds())
 
 def populate_physical_graph(graph_client: GremlinClient,
                             metrics_client: HeronMetricsClient,

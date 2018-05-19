@@ -14,11 +14,11 @@ LOG: logging.Logger = logging.getLogger(__name__)
 
 TOPO_UPDATED_SEARCH_STR: str = \
     (r"ctime</td><td>(?P<date>\w+ \d+, \d+ \d+:\d+ \w.\w.) "
-     r"\(((?P<months>\d+)\smonths?,)?\s?"
-     r"((?P<weeks>\d+)\sweeks?,)?\s?"
-     r"((?P<days>\d+)\sdays?,)?\s?"
-     r"((?P<hours>\d+)\shours?,?)?\s?"
-     r"((?P<minutes>\d+\sminutes?))?"
+     r"\(((?P<months>\d+)\s?months?,?)?\s?"
+     r"((?P<weeks>\d+)\s?weeks?,?)?\s?"
+     r"((?P<days>\d+)\s?days?,?)?\s?"
+     r"((?P<hours>\d+)\s?hours?,?)?\s?"
+     r"((?P<minutes>\d+\s?minutes?))?"
      r"\sago\)")
 
 DATE_FORMAT: str = "%B %d, %Y %I:%M %p"

@@ -140,13 +140,14 @@ def graph_check(graph_client: GremlinClient, zk_config: Dict[str, Any],
                  "the last physical graph (reference: %s) was built",
                  topology_id, most_recent_graph[0])
 
-        topology_ref = _build_graph(graph_client, tracker_url, cluster, environ,
-                                    topology_id)
+        topology_ref = _build_graph(graph_client, tracker_url, cluster,
+                                    environ, topology_id)
     else:
 
-        LOG.info("The current physical plan for topology %s is already "
-                 "represented in the graph database", topology_id)
         topology_ref = most_recent_graph[0]
+        LOG.info("The current physical plan for topology %s is already "
+                 "represented in the graph database with reference %s",
+                 topology_id, topology_ref)
 
 
     return topology_ref

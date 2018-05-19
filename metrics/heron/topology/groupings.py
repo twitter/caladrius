@@ -55,7 +55,7 @@ def summary(tracker_url: str, topology_id: str, cluster: str,
 
     return dict(grouping_counts)
 
-def summerise(tracker_url: str) -> pd.DataFrame:
+def summarise(tracker_url: str) -> pd.DataFrame:
     """ Summarises the stream grouping counts of all topologies registered with
     the supplied Tracker instance.
 

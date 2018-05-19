@@ -292,9 +292,14 @@ class HeronTMasterClient(HeronMetricsClient):
             latency_ms: The average execute latency measurement in milliseconds
                         for that metric time period.
         """
-
-        cluster: str = cast(str, kwargs["cluster"])
-        environ: str = cast(str, kwargs["environ"])
+        try:
+            cluster: str = cast(str, kwargs["cluster"])
+            environ: str = cast(str, kwargs["environ"])
+        except KeyError as kerr:
+            ke_msg: str = (f"Keyword argument: {kerr.args[0]} should be "
+                           f"supplied.")
+            LOG.error(ke_msg)
+            raise RuntimeError(ke_msg)
 
         logical_plan: Dict[str, Any] = tracker.get_logical_plan(
             self.tracker_url, cluster, environ, topology_id)

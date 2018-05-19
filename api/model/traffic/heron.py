@@ -82,13 +82,14 @@ class HeronTraffic(Resource):
 
         output: Dict[str, Any] = {}
         output["errors"] = {}
+        output["results"] = {}
 
         for model in self.models:
             LOG.info("Running traffic prediction model %s for topology %s ",
                      model.name, topology_id)
             try:
-                output[model.name] = model.predict_traffic(topology_id,
-                                                           **request_args)
+                output["results"][model.name] = \
+                    model.predict_traffic(topology_id, **request_args)
             except Exception as err:
                 output["errors"][model.name] = \
                     str(type(err)).split("'")[1] + " : " + str(err)

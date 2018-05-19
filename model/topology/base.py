@@ -11,8 +11,8 @@ class TopologyModel(Model):
 
     @abstractmethod
     def predict_current_performance(self, topology_id: str,
-                                    spout_traffic: Dict[int, Dict[str, float]]
-                                   ) -> Dict[str, Any]:
+                                    spout_traffic: Dict[int, Dict[str, float]],
+                                    **kwargs: Any) -> Dict[str, Any]:
         """ Predicts the performance of the specified topology as it is
         currently configured with the supplied traffic level.
 
@@ -21,6 +21,8 @@ class TopologyModel(Model):
                                 whose performance will be predicted.
             spout_traffic (dict):   A dictionary which gives the output of each
                                     spout instance onto each output stream.
+            **kwargs:   Any additional keyword arguments required by the model
+                        implementation.
 
         Returns:
             A dictionary (suitable for conversion to JSON) containing the
@@ -31,7 +33,7 @@ class TopologyModel(Model):
     @abstractmethod
     def predict_proposed_performance(
             self, topology_id: str, spout_traffic: Dict[int, Dict[str, float]],
-            proposed_plan: Any) -> Dict[str, Any]:
+            proposed_plan: Any, **kwargs: Any) -> Dict[str, Any]:
         """ Predicts the performance of the specified topology when configured
         according to the proposed physical plan.
 
@@ -42,6 +44,8 @@ class TopologyModel(Model):
                                     spout instance onto each output stream.
             proposed_plan:  A data structure containing the proposed physical
                             plan.
+            **kwargs:   Any additional keyword arguments required by the model
+                        implementation.
 
         Returns:
             A dictionary (suitable for conversion to JSON) containing the

@@ -7,6 +7,8 @@ import datetime as dt
 
 from typing import Tuple
 
+import pandas as pd
+
 LOG: logging.Logger = logging.getLogger(__name__)
 
 def get_window_dt_from_now(seconds: int = 0, minutes: float = 0.0,
@@ -45,3 +47,12 @@ def get_window_dt_from_now(seconds: int = 0, minutes: float = 0.0,
     start: dt.datetime = end - duration
 
     return (start, end)
+
+def calculate_ts_period(time_series: pd.Series) -> float:
+    """ Calculates the median time period in seconds between unique sorted
+    timestamps in the supplied series.
+    """
+    ts_periods: pd.Series = \
+        pd.Series(time_series.unique()).sort_values().diff().dropna()
+
+    return ts_periods.median().total_seconds()
