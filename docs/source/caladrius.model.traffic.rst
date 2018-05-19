@@ -11,10 +11,10 @@ Subpackages
 Submodules
 ----------
 
-caladrius.model.traffic.traffic\_model module
----------------------------------------------
+caladrius.model.traffic.base module
+-----------------------------------
 
-.. automodule:: caladrius.model.traffic.traffic_model
+.. automodule:: caladrius.model.traffic.base
     :members:
     :undoc-members:
     :show-inheritance:

@@ -6,8 +6,10 @@ Subpackages
 
 .. toctree::
 
+    caladrius.graph.analysis
     caladrius.graph.builder
-    caladrius.graph.client
+    caladrius.graph.gremlin
+    caladrius.graph.utils
 
 Module contents
 ---------------

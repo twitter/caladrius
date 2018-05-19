@@ -4,18 +4,10 @@ caladrius.model.traffic.heron package
 Submodules
 ----------
 
-caladrius.model.traffic.heron.dummy\_traffic module
+caladrius.model.traffic.heron.stats\_summary module
 ---------------------------------------------------
 
-.. automodule:: caladrius.model.traffic.heron.dummy_traffic
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-caladrius.model.traffic.heron.historic\_traffic\_model module
--------------------------------------------------------------
-
-.. automodule:: caladrius.model.traffic.heron.historic_traffic_model
+.. automodule:: caladrius.model.traffic.heron.stats_summary
     :members:
     :undoc-members:
     :show-inheritance:

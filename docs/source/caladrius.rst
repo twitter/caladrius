@@ -8,6 +8,7 @@ Subpackages
 
     caladrius.api
     caladrius.common
+    caladrius.config
     caladrius.graph
     caladrius.metrics
     caladrius.model

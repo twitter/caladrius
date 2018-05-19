@@ -6,9 +6,19 @@ Subpackages
 
 .. toctree::
 
-    caladrius.common.cuckoo
     caladrius.common.heron
-    caladrius.common.time
+
+Submodules
+----------
+
+caladrius.common.timestamp module
+---------------------------------
+
+.. automodule:: caladrius.common.timestamp
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 
 Module contents
 ---------------

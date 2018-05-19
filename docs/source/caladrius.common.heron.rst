@@ -12,6 +12,14 @@ caladrius.common.heron.tracker module
     :undoc-members:
     :show-inheritance:
 
+caladrius.common.heron.zookeeper module
+---------------------------------------
+
+.. automodule:: caladrius.common.heron.zookeeper
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 
 Module contents
 ---------------

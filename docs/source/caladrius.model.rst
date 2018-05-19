@@ -12,10 +12,10 @@ Subpackages
 Submodules
 ----------
 
-caladrius.model.model module
-----------------------------
+caladrius.model.base module
+---------------------------
 
-.. automodule:: caladrius.model.model
+.. automodule:: caladrius.model.base
     :members:
     :undoc-members:
     :show-inheritance:

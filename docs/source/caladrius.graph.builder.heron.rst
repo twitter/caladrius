@@ -12,14 +12,6 @@ caladrius.graph.builder.heron.builder module
     :undoc-members:
     :show-inheritance:
 
-caladrius.graph.builder.heron.routing\_probability module
----------------------------------------------------------
-
-.. automodule:: caladrius.graph.builder.heron.routing_probability
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 
 Module contents
 ---------------

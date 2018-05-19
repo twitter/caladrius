@@ -1,13 +1,20 @@
 caladrius.model.topology package
 ================================
 
+Subpackages
+-----------
+
+.. toctree::
+
+    caladrius.model.topology.heron
+
 Submodules
 ----------
 
-caladrius.model.topology.topology\_model module
------------------------------------------------
+caladrius.model.topology.base module
+------------------------------------
 
-.. automodule:: caladrius.model.topology.topology_model
+.. automodule:: caladrius.model.topology.base
     :members:
     :undoc-members:
     :show-inheritance:

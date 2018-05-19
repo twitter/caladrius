@@ -6,8 +6,8 @@ Subpackages
 
 .. toctree::
 
-    caladrius.tests.graph
-    caladrius.tests.metrics
+    caladrius.tests.local
+    caladrius.tests.validation
 
 Submodules
 ----------
