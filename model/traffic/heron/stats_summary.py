@@ -35,8 +35,23 @@ class StatsSummaryTrafficModel(TrafficModel):
         super().__init__(config, metrics_client, graph_client)
 
         self.metrics_client: HeronMetricsClient
-        self.default_source_hours: int = \
-            config["stats.summary.model.default.source.hours"]
+
+        if "stats.summary.model.default.source.hours" in config:
+
+            self.default_source_hours: int = \
+                config["stats.summary.model.default.source.hours"]
+
+        else:
+            LOG.warning("Default source hours were not supplied via "
+                        "configuration file. Setting to 3 hours.")
+            self.default_source_hours = 3
+
+        if "stats.summary.model.quantiles" in config:
+            self.quantiles: List[int] = config["stats.summary.model.quantiles"]
+        else:
+            LOG.warning("Quantile values were not set via configuration file "
+                        " using; 10, 90, 95, 99 as defaults.")
+            self.quantiles = [10, 90, 95, 99]
 
     def predict_traffic(self, topology_id: str,
                         **kwargs: Union[str, int, float]) -> Dict[str, Any]:
@@ -44,7 +59,8 @@ class StatsSummaryTrafficModel(TrafficModel):
         spout instances of the specified topology. It will summarise the emit
         metrics over the number of hours defined by the source_hours keyword
         argument and provide summary statistics (mean, median, min, max and
-        quantiles) over all instances and for each individual instance.
+        quantiles) over all instances of each component and for each individual
+        instance.
 
         Arguments:
             topology_id (str):  The topology ID string
@@ -55,9 +71,21 @@ class StatsSummaryTrafficModel(TrafficModel):
             A dictionary with top level keys for "components" which links to
             summary statistics for each spout instance and "instances" with
             summary statistics for each individual instance of each spout
-            component. The summary dictionaries have keys for each of the
-            provided statistics linking to a float value for that statistic.
-        """
+            component.
+
+            The dictionary has the form:
+                ["components"]
+                    [statistic_name]
+                        [component_name]
+                            [output_stream_name] = emit_count
+
+                ["instances"]
+                    [statistic_name]
+                        [task_id]
+                            [output_stream_name] = emit_count
+
+            All dictionary keys are stings to allow easy conversion to JSON.
+            """
 
         if "source_hours" not in kwargs:
             LOG.warning("source_hours parameter (indicating how many hours of "
@@ -102,52 +130,52 @@ class StatsSummaryTrafficModel(TrafficModel):
                              "original_metric_frequency_secs" :
                              time_period_sec}
 
-        # TODO: Make this list configurable from the main yaml file
-        quantiles: List[int] = [10, 90, 95, 99]
-
-        components: DefaultDict[str, Dict[str, SUMMARY_DICT]] = \
-                defaultdict(dict)
+        components: DefaultDict[str, DefaultDict[str, SUMMARY_DICT]] = \
+                defaultdict(lambda: defaultdict(dict))
 
         for (comp, stream), comp_data in \
                 spout_emit_counts.groupby(["component", "stream"]):
-            component: SUMMARY_DICT = {}
-            component["mean"] = (float(comp_data.emit_count.mean()) /
-                                 time_period_sec)
-            component["median"] = (float(comp_data.emit_count.median()) /
-                                   time_period_sec)
-            component["max"] = (float(comp_data.emit_count.max()) /
-                                time_period_sec)
-            component["min"] = (float(comp_data.emit_count.min()) /
-                                time_period_sec)
-            for quantile in quantiles:
-                component[f"{quantile}-quantile"] = \
+
+            components["mean"][comp][stream] = \
+                (float(comp_data.emit_count.mean()) / time_period_sec)
+
+            components["median"][comp][stream] = \
+                (float(comp_data.emit_count.median()) / time_period_sec)
+
+            components["max"][comp][stream] = \
+                (float(comp_data.emit_count.max()) / time_period_sec)
+
+            components["min"][comp][stream] = \
+                (float(comp_data.emit_count.min()) / time_period_sec)
+
+            for quantile in self.quantiles:
+                components[f"{quantile}-quantile"][comp][stream] = \
                     (float(comp_data.emit_count.quantile(quantile/100)) /
                      time_period_sec)
 
-            components[comp][stream] = component
-
         output["components"] = components
 
-        instances: DefaultDict[str, Dict[str, SUMMARY_DICT]] = \
-                defaultdict(dict)
+        instances: DefaultDict[str, DefaultDict[str, SUMMARY_DICT]] = \
+                defaultdict(lambda: defaultdict(dict))
 
         for (task_id, stream), task_data in \
                 spout_emit_counts.groupby(["task", "stream"]):
-            instance: SUMMARY_DICT = {}
-            instance["mean"] = (float(task_data.emit_count.mean()) /
-                                time_period_sec)
-            instance["median"] = (float(task_data.emit_count.median()) /
-                                  time_period_sec)
-            instance["max"] = (float(task_data.emit_count.max()) /
-                               time_period_sec)
-            instance["min"] = (float(task_data.emit_count.min()) /
-                               time_period_sec)
-            for quantile in quantiles:
-                instance[f"{quantile}-quantile"] = \
+            instances["mean"][str(task_id)][stream] = \
+                (float(task_data.emit_count.mean()) / time_period_sec)
+
+            instances["median"][str(task_id)][stream] = \
+                (float(task_data.emit_count.median()) / time_period_sec)
+
+            instances["max"][str(task_id)][stream] = \
+                (float(task_data.emit_count.max()) / time_period_sec)
+
+            instances["min"][str(task_id)][stream] = \
+                (float(task_data.emit_count.min()) / time_period_sec)
+
+            for quantile in self.quantiles:
+                instances[f"{quantile}-quantile"][str(task_id)][stream] = \
                     (float(task_data.emit_count.quantile(quantile/100)) /
                      time_period_sec)
-
-            instances[str(task_id)][stream] = instance
 
         output["instances"] = instances
 

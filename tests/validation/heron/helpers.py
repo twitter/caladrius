@@ -8,14 +8,10 @@ import datetime as dt
 from typing import Dict, Any, DefaultDict, Union, cast
 from collections import defaultdict
 
-import requests
-
 import pandas as pd
 
 from caladrius.common.heron import tracker
 from caladrius.metrics.heron.client import HeronMetricsClient
-from caladrius.model.traffic.heron.stats_summary import \
-    StatsSummaryTrafficModel
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -25,6 +21,24 @@ def get_spout_state(metrics_client: HeronMetricsClient, topology_id: str,
                     summary_method: str = "median",
                     **kwargs: Union[str, int, float]
                    ) -> Dict[int, Dict[str, float]]:
+    """ Helper script that will fetch the median or mean spout emit counts and
+    format them into the dictionary structure expected by the topology
+    performance prediction methods.
+
+    Arguments:
+        metrics_client (HeronMetricsClient):    The client for the metrics
+                                                database.
+        topology_id (str):  The topology identification string.
+        tracker_url (str):  The URL for the Heron Tracker API>
+        start (dt.datetime):    The UTC datetime for the start of the metrics
+                                gathering period.
+        end (dt.datetime):  The UTC datetime for the start of the metrics
+                            gathering period.
+        summary_method (str):   The method to use to summerise the emit counts.
+                                Either "mean" to "median". Defaults to median.
+        **kwargs:   Any additional keyword arguments required by the metrics
+                    client.
+    """
 
     LOG.info("Getting spout emission state dictionary for topology %s over a"
              "period of %d seconds from %s to %s", topology_id,
@@ -59,33 +73,5 @@ def get_spout_state(metrics_client: HeronMetricsClient, topology_id: str,
     for (task_id, stream), emit_count in spout_emits.iteritems():
 
         output[task_id][stream] = emit_count
-
-    return output
-
-def traffic_summary_to_spout_state(topology_id: str, cluster: str,
-                                   environ: str, source_hours: int=3,
-                                   base_url: str = "localhost:5000"):
-
-    traffic_summary_url: str = \
-        f"http://{base_url}/model/traffic/heron/{topology_id}"
-
-    response: requests.Response = requests.get(
-        traffic_summary_url, params={"cluster" : cluster, "environ" : environ,
-                                     "source_hours" : source_hours})
-
-    response.raise_for_status()
-
-    response_dict: Dict[str, Any] = response.json()
-
-    traffic_stats: Dict[str, Any] = \
-        response_dict["results"][StatsSummaryTrafficModel.name]
-
-    output = defaultdict(lambda: defaultdict(dict))
-
-    for instance_str, stream_dict in traffic_stats["instances"].items():
-        task_id: int = int(instance_str)
-        for stream, summary in stream_dict.items():
-            for stat_name, value in summary.items():
-                output[stat_name][task_id][stream] = value
 
     return output
