@@ -2,14 +2,18 @@
 modelling API """
 import logging
 
-from typing import List, Type, Dict, Any
+from typing import List, Type, Dict, Any, Tuple, Hashable
 
-from flask_restful import Resource, reqparse
+import pandas as pd
+
+from flask import request
+from flask_restful import Resource
 
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.graph.utils.heron import graph_check
 from caladrius.model.topology.base import TopologyModel
+from caladrius.api import utils
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -50,56 +54,88 @@ class HeronCurrent(Resource):
             model = model_class(model_config, metrics_client, graph_client)
             self.models[model.name] = model
 
-        self.parser = reqparse.RequestParser()
-        self.parser.add_argument("cluster", type=str, required=True,
-                                 help="The name of the cluster the topology is"
-                                      " running in")
-        self.parser.add_argument("environ", type=str, required=True,
-                                 help="The name of the environment the "
-                                      "topology is running in")
-        self.parser.add_argument("model", type=str, required=False,
-                                 action='append',
-                                 help="The model(s) to run")
-
         super().__init__()
 
-    def get(self, topology_id: str) -> dict:
+    def post(self, topology_id: str) -> Tuple[Dict[str, Any], int]:
 
-        request_args = self.parser.parse_args()
+        # Make sure we have the args we need
+        errors: List[Dict[str, str]] = []
+        if "cluster" not in request.args:
+            errors.append({"type" : "MissingParameter",
+                           "error":"'cluster' parameter should be supplied"})
+
+        if "environ" not in request.args:
+            errors.append({"type" : "MissingParameter",
+                           "error" : "'environ' parameter should be supplied"})
+
+        if "model" not in request.args:
+            errors.append({"type" : "MissingParameter",
+                           "error" : ("At least one 'model' parameter should "
+                                      "be supplied. Supply 'all' to run all "
+                                      "configured models")})
+
+        # Return useful errors to the client if any parameters are missing
+        if errors:
+            return {"errors" : errors}, 400
+
+        LOG.info("Processing performance modelling request for topology: %s, "
+                 "cluster: %s, environment: %s, using model: %s", topology_id,
+                 request.args.get("cluster"), request.args.get("environ"),
+                 str(request.args.getlist("model")))
 
         # Make sure we have a current graph representing the physical plan for
         # the topology
-        topology_ref: str = graph_check(self.graph_client, self.model_config,
-                                        self.tracker_url,
-                                        request_args["cluster"],
-                                        request_args["environ"], topology_id)
+        graph_check(self.graph_client, self.model_config, self.tracker_url,
+                    request.args.get("cluster"), request.args.get("environ"),
+                    topology_id)
 
-        if request_args["model"].lower() == "all":
+        # Get the spout traffic state and convert the json string task ID to
+        # integers
+        json_traffic: Dict[str, Dict[str, float]] = request.get_json()
+        traffic: Dict[int, Dict[str, float]] = \
+            {int(key) : value for key, value in json_traffic.items()}
+
+        if "all" in request.args.getlist("model"):
+            LOG.info("Running all configured Heron topology performance "
+                     "models")
             models = self.models.keys()
         else:
-            models = request_args["model"]
+            models = request.args.getlist("model")
 
+        # Convert the request.args to a dict suitable for passing as **kwargs
+        model_kwargs: Dict[str, Any] = \
+            utils.convert_wimd_to_dict(request.args)
+
+        # Remove the models list from the kwargs as it is only needed by this
+        # method
+        model_kwargs.pop("model")
+
+        output = {}
         for model_name in models:
             LOG.info("Running topology performance model %s", model_name)
-            model = self.models["model_name"]
-            # TODO: Sort out model running
 
-        return {"topology_id" : topology_id,
-                "topology_ref" : topology_ref}
+            model = self.models[model_name]
+
+            try:
+                results: pd.DataFrame = model.predict_current_performance(
+                    topology_id=topology_id, spout_traffic=traffic, **model_kwargs)
+            except Exception as err:
+                LOG.error("Error running model: %s -> %s", model.name,
+                          str(err))
+                errors.append({"model": model.name, "type": str(type(err)),
+                               "error" : str(err)})
+            else:
+                output[model_name] = results.to_json(orient="records")
+
+        if errors:
+            return {"errors" : errors}, 500
+
+        return output, 200
 
 class HeronProposed(Resource):
 
-    def __init__(self) -> None:
-        self.parser = reqparse.RequestParser()
-        self.parser.add_argument('model_id', type=int, required=True,
-                                 help='Model ID must be supplied')
-        super().__init__()
+    def get(self, topology_id: str) -> Tuple[Dict[str, Any], int]:
+        return {"errors": ["Not implemented yet"]}, 501
 
-    def get(self, topology_id: str) -> str:
-        args = self.parser.parse_args()
-        msg: str = (f"Results requested for model: {args['model_id']} of "
-                    f"topology: {topology_id}")
-        return msg
-
-    def post(self, topo_id: str):
-        return 202
+    def post(self, topo_id: str) -> Tuple[Dict[str, Any], int]:
+        return {"errors": ["Not implemented yet"]}, 501

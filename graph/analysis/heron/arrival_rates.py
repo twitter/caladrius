@@ -282,21 +282,19 @@ def _calc_strmgr_in_out(sending_instances: Dict[str, List[int]],
 
     return pd.DataFrame(strmgr_output)
 
-def calculate_arrival_rates(graph_client: GremlinClient,
-                            metrics_client: HeronMetricsClient,
-                            topology_id: str, topology_ref: str,
-                            start: dt.datetime, end: dt.datetime,
-                            io_bucket_length: int,
-                            spout_state: Dict[int, Dict[str, float]],
-                            **kwargs: Union[str, int, float]
-                           ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def calculate(graph_client: GremlinClient, metrics_client: HeronMetricsClient,
+              topology_id: str, topology_ref: str, start: dt.datetime,
+              end: dt.datetime, io_bucket_length: int,
+              spout_state: Dict[int, Dict[str, float]],
+              **kwargs: Union[str, int, float]
+             ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
 
     Arguments:
         graph_client (GremlinClient):   The client instance for the graph
                                         database.
-        metric_client (HeronMetricsClient): The client instance for the
-                                            metrics database.
+        metrics_client (HeronMetricsClient):    The client instance for the
+                                                metrics database.
         topology_id (str):  The topology identification string.
         topology_ref (str): The reference string for the topology physical
                             graph to be used in the calculations.
@@ -312,14 +310,15 @@ def calculate_arrival_rates(graph_client: GremlinClient,
                             this rate (TPS, TPM etc) will be the same for the
                             arrival rates.
         **kwargs:   Any additional key word arguments required by the metrics
-                    client query methods.
+                    client query methods. NOTE: This is passed to a cached
+                    method so all kwargs must be hashable. Un-hashable
+                    arguments will be removed before being supplied.
 
     Returns:
-        instance_arrival_rates: A DataFrame containing the arrival rate at each
-                                instance.
-        stream_manager_input_output_rates:  A DataFrame containing the input
-                                            and output rate of each stream
-                                            manager.
+        pd.DataFrame:   A DataFrame containing the arrival rate at each
+                        instance.
+        pd.DataFrame:   A DataFrame containing the input and output rate of
+                        each stream  manager.
 
     Raises:
         RuntimeError:   If there is no entry in the graph database for the
