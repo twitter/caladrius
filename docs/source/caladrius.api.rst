@@ -19,6 +19,14 @@ caladrius.api.router module
     :undoc-members:
     :show-inheritance:
 
+caladrius.api.utils module
+--------------------------
+
+.. automodule:: caladrius.api.utils
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 
 Module contents
 ---------------

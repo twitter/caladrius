@@ -13,7 +13,6 @@ Subpackages
     caladrius.metrics
     caladrius.model
     caladrius.proto
-    caladrius.tests
 
 Submodules
 ----------

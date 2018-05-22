@@ -12,11 +12,6 @@ import pandas as pd
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-# Define Types
-LPLAN_SPOUTS = Dict[str, Dict[str, Union[str, List[Dict[str, str]]]]]
-LPLAN_BOLTS = Dict[str, Dict[str, Union[List[str], List[Dict[str, str]]]]]
-LOGICAL_PLAN = Dict[str, Union[int, LPLAN_SPOUTS, LPLAN_BOLTS]]
-
 #pylint: disable=too-many-arguments
 
 def get_topologies(tracker_url: str, cluster: str = None,
@@ -32,12 +27,12 @@ def get_topologies(tracker_url: str, cluster: str = None,
                         devel, test, etc).
 
     Returns:
-        A DataFrame containing details of all topologies registered with the
-        Heron tracker. This has the columns for:
-        topology: The topology ID
-        cluster: The cluster the topology is running on
-        environ: The environment the topology is running in
-        user: The user that uploaded the topology
+        pandas.DataFrame:   A DataFrame containing details of all topologies
+        registered with  the Heron tracker. This has the columns for:
+        *topology*: The topology ID,
+        *cluster*: The cluster the topology is running on,
+        *environ*: The environment the topology is running in,
+        *user*: The user that uploaded the topology.
 
     Raises:
         requests.HTTPError: If a non 200 status code is returned.
@@ -75,7 +70,7 @@ def get_topologies(tracker_url: str, cluster: str = None,
     return pd.DataFrame(output)
 
 def get_logical_plan(tracker_url: str, cluster: str, environ: str,
-                     topology: str) -> LOGICAL_PLAN:
+                     topology: str) -> Dict[str, Any]:
     """ Get the logical plan dictionary from the heron tracker api.
 
     Arguments:
@@ -86,7 +81,8 @@ def get_logical_plan(tracker_url: str, cluster: str, environ: str,
         topology (str): The topology name.
 
     Returns:
-        A dictionary containing details of the spouts and bolts.
+        Dict[str, Any]:   A dictionary containing details of the spouts and
+        bolts.
 
     Raises:
         requests.HTTPError: If a non 200 status code is returned.
@@ -123,8 +119,8 @@ def get_physical_plan(tracker_url: str, cluster: str, environ: str,
         topology (str): The topology name.
 
     Returns:
-        A dictionary containing details of the containers and stream managers
-        for the specified topology.
+        Dict[str, Any]: A dictionary containing details of the containers and
+        stream managers for the specified topology.
 
     Raises:
         requests.HTTPError: If a non 200 status code is returned.
@@ -158,10 +154,10 @@ def parse_instance_name(instance_name: str) -> Dict[str, Union[str, int]]:
                              container_<container_num>_<component>_<task_id>
 
     Returns:
-        A dictionary with the following keys:
-            container : The container id as a integer
-            component : The component name string
-            task_id : The instances task id as an integer
+        Dict[str, Union[str, int]]: A dictionary with the following keys:
+        *container* : The container id as a integer,
+        *component* : The component name string,
+        *task_id* : The instances task id as an integer.
     """
 
     parts: List[str] = instance_name.split("_")
@@ -183,8 +179,8 @@ def get_topology_info(tracker_url: str, cluster: str, environ: str,
         topology (str): The topology name.
 
     Returns:
-        A dictionary containing all the details the tracker has on the
-        specified topology.
+        Dict[str, Union[str, int]]: A dictionary containing all the details the
+        tracker has on the specified topology.
 
     Raises:
         requests.HTTPError: If a non 200 status code is returned.
@@ -222,8 +218,8 @@ def get_metrics(tracker_url: str, cluster: str, environ: str, topology: str,
                                 returned.
 
     Returns:
-        A dictionary containing aggregate metrics for the specified topology
-        component.
+        Dict[str, Any]: A dictionary containing aggregate metrics for the
+        specified topology component.
 
     Raises:
         requests.HTTPError: If a non 200 status code is returned.
@@ -267,8 +263,8 @@ def get_metrics_timeline(tracker_url: str, cluster: str, environ: str,
                                 returned.
 
     Returns:
-        A dictionary containing metrics timelines for the specified topology
-        component.
+        Dict[str, Any]: A dictionary containing metrics timelines for the
+        specified topology  component.
 
     Raises:
         requests.HTTPError: If a non 200 status code is returned.
@@ -319,7 +315,7 @@ def issue_metrics_query(tracker_url: str, cluster: str, environ: str,
         query (str):    The query string to be issued to the Tracker API.
 
     Returns:
-        A dictionary containing the query results.
+        Dict[str, Any]: A dictionary containing the query results.
 
     Raises:
         requests.HTTPError: If a non 200 status code is returned.
@@ -359,7 +355,7 @@ def get_incoming_streams(logical_plan: Dict[str, Any],
                             are to be extracted.
 
     Returns:
-        A list of incoming stream names.
+        List[str]:  A list of incoming stream names.
     """
 
     return [input_stream["stream_name"]
@@ -379,7 +375,8 @@ def incoming_sources_and_streams(logical_plan: Dict[str, Any],
                             are to be extracted.
 
     Returns:
-        A list of (source component name, incoming stream name) tuples.
+        List[str]:  A list of (source component name, incoming stream name)
+        tuples.
     """
 
     return [(input_stream["component_name"], input_stream["stream_name"])
@@ -398,7 +395,7 @@ def get_outgoing_streams(logical_plan: Dict[str, Any],
                             are to be extracted.
 
     Returns:
-        A list of outgoing stream names.
+        List[str]:  A list of outgoing stream names.
     """
 
     # Check if this is a spout
@@ -424,8 +421,8 @@ def get_component_task_ids(tracker_url: str, cluster: str, environ: str,
         topology (str): The topology name.
 
     Returns:
-        A dictionary mapping from component name to a list of integer task
-        id for the instances belonging to that component.
+        Dict[str, List[int]]:   A dictionary mapping from component name to a
+        list of integer task id for the instances belonging to that component.
     """
 
     pplan: Dict[str, Any] = get_physical_plan(tracker_url, cluster, environ,

@@ -76,7 +76,7 @@ If you want to build the latest documentation then this can be done using
 installed the development dependencies above, the docs can be built using the
 following commands in the repository root:
 
-    $ pipenv run sphinx-apidoc -f -o docs/source .
+    $ pipenv run sphinx-apidoc -f -o docs/source . tests/*
     $ cd docs
     $ pipenv run make html
 
