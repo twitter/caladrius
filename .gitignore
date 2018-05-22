@@ -9,7 +9,7 @@
 *DS_Store
 
 # MyPy 
-.mypy_cache/*
+*.mypy_cache/
 
 # Pyre
 .pyre_configuration
