@@ -7,6 +7,7 @@ Subpackages
 .. toctree::
 
     caladrius.metrics.heron.cuckoo
+    caladrius.metrics.heron.tmaster
     caladrius.metrics.heron.topology
 
 Submodules
