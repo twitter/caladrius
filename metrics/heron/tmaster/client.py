@@ -23,21 +23,24 @@ LOG: logging.Logger = logging.getLogger(__name__)
 # Type definitions
 ROW_DICT = Dict[str, Union[str, int, float, dt.datetime, None]]
 
+
 def time_check(start: dt.datetime, end: dt.datetime,
                time_limit_hrs: float) -> None:
     """ Checks the time period, defined by the supplied start and end points,
     against the period defined from now back by the supplied time limit in
-    hours.
+    hours. If the time check passes then nothing will be returned.
 
     Arguments:
-        start (dt.datetime):    The start of the time period. Should be UTC.
-        end (dt.datetime):  The end of the time period. Should be UTC.
+        start (datetime):    The start of the time period. Should be UTC.
+        end (datetime):  The end of the time period. Should be UTC.
         time_limit_hrs (float): The number of hours back from now that define
                                 the allowed time period.
 
     Raises:
         RuntimeError:   If the supplied time period is not within the defined
                         limit or if the end time is before the start time.
+        RuntimeWarning: If the supplied time period crosses the limits of the
+                        metrics storage period.
     """
 
     if end < start:
@@ -70,6 +73,7 @@ def time_check(start: dt.datetime, end: dt.datetime,
         LOG.warning(truncated_msg)
         warnings.warn(truncated_msg, RuntimeWarning)
 
+
 def instance_timelines_to_dataframe(
         instance_timelines: dict, stream: str, measurement_name: str,
         conversion_func: Callable[[str], Union[str, int, float]] = None,
@@ -94,8 +98,8 @@ def instance_timelines_to_dataframe(
                                     string.
 
     Returns:
-        A pandas DataFrame containing the timelines of all instances in the
-        supplied dictionary.
+        pandas.DataFrame: A DataFrame containing the timelines of all instances
+        in the supplied dictionary.
     """
 
     output: List[ROW_DICT] = []
@@ -123,12 +127,12 @@ def instance_timelines_to_dataframe(
                     measurement = measurement_str
 
             row: ROW_DICT = {
-                "timestamp" : timestamp,
-                "container" : details["container"],
-                "task" : details["task_id"],
-                "component" : details["component"],
-                "stream" : stream,
-                measurement_name : measurement}
+                "timestamp": timestamp,
+                "container": details["container"],
+                "task": details["task_id"],
+                "component": details["component"],
+                "stream": stream,
+                measurement_name: measurement}
 
             if source_component:
                 row["source_component"] = source_component
@@ -144,11 +148,13 @@ def instance_timelines_to_dataframe(
 
     return pd.DataFrame(output)
 
+
 def str_nano_to_float_milli(nano_str: str) -> float:
     """ Converts a string of a nano measurement into a millisecond float value.
     """
 
     return float(nano_str) / 1000000.0
+
 
 class HeronTMasterClient(HeronMetricsClient):
     """ Class for extracting metrics from the Heron Topology Master metrics
@@ -176,7 +182,6 @@ class HeronTMasterClient(HeronMetricsClient):
             return True
 
         return False
-
 
     def get_component_service_times(self, topology_id: str, cluster: str,
                                     environ: str, component_name: str,
@@ -207,18 +212,19 @@ class HeronTMasterClient(HeronMetricsClient):
                                     logical plan.
 
         Returns:
-            A pandas DataFrame containing the service time measurements as a
-            timeseries. Each row represents a measurement (aggregated over one
-            minuet) with the following columns:
-            timestamp:  The UTC timestamp for the metric.
-            component: The component this metric comes from.
-            task:   The instance ID number for the instance that the metric
-                    comes from.
-            container:  The ID for the container this metric comes from.
-            stream: The name of the incoming stream from which the tuples
-                    that lead to this metric came from.
-            execute-latency-ms: The average execute latency measurement in
-                                milliseconds for that metric time period.
+            pandas.DataFrame: A DataFrame containing the service time
+            measurements as a timeseries. Each row represents a measurement
+            (aggregated over one minute) with the following columns:
+
+            * timestamp: The UTC timestamp for the metric time period,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from,
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            * execute-latency-ms: The average execute latency measurement in
+              milliseconds for that metric time period.
         """
 
         LOG.info("Getting service time metrics for component %s of topology "
@@ -270,27 +276,28 @@ class HeronTMasterClient(HeronMetricsClient):
 
         Arguments:
             topology_id (str):    The topology identification string.
-            start (dt.datetime):    utc datetime instance for the start of the
+            start (datetime):    utc datetime instance for the start of the
                                     metrics gathering period.
-            end (dt.datetime):  utc datetime instance for the end of the
+            end (datetime):  utc datetime instance for the end of the
                                 metrics gathering period.
             **cluster (str):  The cluster the topology is running in.
             **environ (str):  The environment the topology is running in (eg.
                               prod, devel, test, etc).
 
         Returns:
-            A pandas DataFrame containing the service time measurements as a
-            timeseries. Each row represents a measurement (aggregated over one
-            minuet) with the following columns:
-            timestamp:  The UTC timestamp for the metric.
-            component: The component this metric comes from.
-            task:   The instance ID number for the instance that the metric
-                    comes from.
-            container:  The ID for the container this metric comes from.
-            stream: The name of the incoming stream from which the tuples
-                    that lead to this metric came from.
-            latency_ms: The average execute latency measurement in milliseconds
-                        for that metric time period.
+            pandas.DataFrame: A DataFrame containing the service time
+            measurements as a timeseries. Each row represents a measurement
+            (aggregated over one minute) with the following columns:
+
+            * timestamp:The UTC timestamp for the metric time period,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from,
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            * latency_ms: The average execute latency measurement in
+              milliseconds for that metric time period.
         """
         try:
             cluster: str = cast(str, kwargs["cluster"])
@@ -338,7 +345,7 @@ class HeronTMasterClient(HeronMetricsClient):
                                       environ: str, component_name: str,
                                       start: int, end: int,
                                       logical_plan: Dict[str, Any] = None
-                                     ) -> pd.DataFrame:
+                                      ) -> pd.DataFrame:
         """ Gets the emit counts, as a timeseries, for every instance of the
         specified component of the specified topology. The start and end times
         define the window over which to gather the metrics. The window duration
@@ -364,17 +371,18 @@ class HeronTMasterClient(HeronMetricsClient):
                                     logical plan.
 
         Returns:
-            A pandas DataFrame containing the emit count measurements as a
-            timeseries. Each row represents a measurement (aggregated over one
-            minuet) with the following columns:
-                timestamp:  The UTC timestamp for the metric time period.
-                component: The component this metric comes from.
-                task:   The instance ID number for the instance that the metric
-                        comes from.
-                container:  The ID for the container this metric comes from.
-                stream: The name of the incoming stream from which the tuples
-                        that lead to this metric came from.
-                emit_count: The emit count in that metric time period
+            pandas.DataFrame: A DataFrame containing the emit count
+            measurements as a timeseries. Each row represents a measurement
+            (aggregated over one minute) with the following columns:
+
+            * timestamp:The UTC timestamp for the metric time period,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from,
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            * emit_count: The emit count in that metric time period.
         """
 
         LOG.info("Getting emission metrics for component %s of topology "
@@ -424,26 +432,27 @@ class HeronTMasterClient(HeronMetricsClient):
 
         Arguments:
             topology_id (str):    The topology identification string.
-            start (dt.datetime):    utc datetime instance for the start of the
+            start (datetime):    utc datetime instance for the start of the
                                     metrics gathering period.
-            end (dt.datetime):  utc datetime instance for the end of the
+            end (datetime):  utc datetime instance for the end of the
                                 metrics gathering period.
             **cluster (str):  The cluster the topology is running in.
             **environ (str):  The environment the topology is running in (eg.
                               prod, devel, test, etc).
 
         Returns:
-            A pandas DataFrame containing the service time measurements as a
-            timeseries. Each row represents a measurement (aggregated over one
-            minuet) with the following columns:
-            timestamp:  The UTC timestamp for the metric.
-            component: The component this metric comes from.
-            task:   The instance ID number for the instance that the metric
-                    comes from.
-            container:  The ID for the container this metric comes from.
-            stream: The name of the outing stream from which the tuples that
-                     lead to this metric came from.
-            emit_count: The emit count during the metric time period.
+            pandas.DataFrame:   A DataFrame containing the service time
+            measurements as a timeseries. Each row represents a measurement
+            (aggregated over one minute) with the following columns:
+
+            * timestamp: The UTC timestamp for the metric,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from,
+            * stream: The name of the outing stream from which the tuples that
+              lead to this metric came from,
+            * emit_count: The emit count during the metric time period.
         """
         try:
             cluster: str = cast(str, kwargs["cluster"])
@@ -490,7 +499,7 @@ class HeronTMasterClient(HeronMetricsClient):
                                      environ: str, component_name: str,
                                      start: int, end: int,
                                      logical_plan: Dict[str, Any] = None
-                                    ) -> pd.DataFrame:
+                                     ) -> pd.DataFrame:
         """ Gets the execute counts, as a timeseries, for every instance of the
         specified component of the specified topology. The start and end times
         define the window over which to gather the metrics. The window duration
@@ -516,17 +525,18 @@ class HeronTMasterClient(HeronMetricsClient):
                                     logical plan.
 
         Returns:
-            A pandas DataFrame containing the emit count measurements as a
-            timeseries. Each row represents a measurement (aggregated over one
-            minuet) with the following columns:
-                timestamp:  The UTC timestamp for the metric time period.
-                component: The component this metric comes from.
-                task:   The instance ID number for the instance that the metric
-                        comes from.
-                container:  The ID for the container this metric comes from.
-                stream: The name of the incoming stream from which the tuples
-                        that lead to this metric came from.
-                execute_count: The execute count in that metric time period
+            pandas.DataFrame: A DataFrame containing the emit count
+            measurements as a timeseries. Each row represents a measurement
+            (aggregated over one minute) with the following columns:
+
+            * timestamp: The UTC timestamp for the metric time period,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from.
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            * execute_count: The execute count in that metric time period.
         """
 
         LOG.info("Getting execute count metrics for component %s of topology "
@@ -578,28 +588,29 @@ class HeronTMasterClient(HeronMetricsClient):
 
         Arguments:
             topology_id (str):    The topology identification string.
-            start (dt.datetime):    UTC datetime instance for the start of the
+            start (datetime):    UTC datetime instance for the start of the
                                     metrics gathering period.
-            end (dt.datetime):  UTC datetime instance for the end of the
+            end (datetime):  UTC datetime instance for the end of the
                                 metrics gathering period.
             **cluster (str):  The cluster the topology is running in.
             **environ (str):  The environment the topology is running in (eg.
                               prod, devel, test, etc).
 
         Returns:
-            A pandas DataFrame containing the service time measurements as a
-            timeseries. Each row represents a measurement (aggregated over one
-            minuet) with the following columns:
-            timestamp:  The UTC timestamp for the metric.
-            component: The component this metric comes from.
-            task:   The instance ID number for the instance that the metric
-                    comes from.
-            container:  The ID for the container this metric comes from.
-            stream: The name of the incoming stream from which the tuples
-                    that lead to this metric came from.
-            source_component:   The name of the component the stream's source
-                                instance belongs to>
-            execute_count: The execute count during the metric time period.
+            pandas.DataFrame:   A DataFrame containing the service time
+            measurements as a timeseries. Each row represents a measurement
+            (aggregated over one minute) with the following columns:
+
+            * timestamp: The UTC timestamp for the metric,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from.
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            * source_component: The name of the component the stream's source
+              instance belongs to,
+            * execute_count: The execute count during the metric time period.
         """
         try:
             cluster: str = cast(str, kwargs["cluster"])
@@ -637,6 +648,185 @@ class HeronTMasterClient(HeronMetricsClient):
                 output = comp_execute_counts
             else:
                 output = output.append(comp_execute_counts, ignore_index=True)
+
+        return output
+
+    def get_spout_complete_latencies(self, topology_id: str, cluster: str,
+                                     environ: str, component_name: str,
+                                     start: int, end: int,
+                                     logical_plan: Dict[str, Any] = None
+                                     ) -> pd.DataFrame:
+        """ Gets the complete latency, as a timeseries, for every instance of
+        the specified component of the specified topology. The start and end
+        times define the window over which to gather the metrics. The window
+        duration should be less then 3 hours as this is the limit of what the
+        Topology master stores.
+
+        Arguments:
+            topology_id (str):    The topology identification string.
+            cluster (str):  The cluster the topology is running in.
+            environ (str):  The environment the topology is running in (eg.
+                            prod, devel, test, etc).
+            component_name (str):   The name of the spout component whose
+                                    metrics are required.
+            start (int):    Start time for the time period the query is run
+                            against. This should be a UTC POSIX time integer
+                            (seconds since epoch).
+            end (int):  End time for the time period the query is run against.
+                        This should be a UTC POSIX time integer (seconds since
+                        epoch).
+            logical_plan (dict):    Optional dictionary logical plan returned
+                                    by the Heron Tracker API. If not supplied
+                                    this method will call the API to get the
+                                    logical plan.
+
+        Returns:
+            pandas.DataFrame:   A DataFrame containing the complete latency
+            measurements as a timeseries. Each row represents a measurement
+            (averaged over one minute) with the following columns:
+
+            * timestamp:  The UTC timestamp for the metric,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container:  The ID for the container this metric comes from,
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            * latency-ms: The average execute latency measurement in
+              milliseconds for that metric time period.
+        """
+
+        LOG.info("Getting complete latency metrics for component %s of "
+                 "topology %s between %s and %s", component_name, topology_id,
+                 dt.datetime.utcfromtimestamp(start).isoformat(),
+                 dt.datetime.utcfromtimestamp(end).isoformat())
+
+        if not logical_plan:
+            LOG.debug("Logical plan not supplied, fetching from Heron Tracker")
+            logical_plan = tracker.get_logical_plan(self.tracker_url, cluster,
+                                                    environ, topology_id)
+
+        outgoing_streams: List[str] = \
+            tracker.get_outgoing_streams(logical_plan, component_name)
+
+        metrics: List[str] = ["__complete-latency/" + stream
+                              for stream in outgoing_streams]
+
+        results: Dict[str, Any] = tracker.get_metrics_timeline(
+            self.tracker_url, cluster, environ, topology_id, component_name,
+            start, end, metrics)
+
+        output: pd.DataFrame = None
+
+        for stream_metric, instance_timelines in results["timeline"].items():
+            metric_list: List[str] = stream_metric.split("/")
+            outgoing_stream: str = metric_list[1]
+
+            instance_tls_df: pd.DataFrame = instance_timelines_to_dataframe(
+                instance_timelines, outgoing_stream, "latency_ms",
+                str_nano_to_float_milli)
+
+            if output is None:
+                output = instance_tls_df
+            else:
+                output = output.append(instance_tls_df, ignore_index=True)
+
+        return output
+
+    def get_complete_latencies(self, topology_id: str, start: dt.datetime,
+                               end: dt.datetime,
+                               **kwargs: Union[str, int, float]
+                               ) -> pd.DataFrame:
+        """ Gets the complete latencies, as a timeseries, for every instance of
+        the of all the spout components of the specified topology. The start
+        and end times define the window over which to gather the metrics. The
+        window duration should be less than 3 hours as this is the limit of
+        what the Topology master stores.
+
+        Arguments:
+            topology_id (str):    The topology identification string.
+            start (datetime):    utc datetime instance for the start of the
+                                    metrics gathering period.
+            end (datetime):  utc datetime instance for the end of the
+                                metrics gathering period.
+            **cluster (str):  The cluster the topology is running in.
+            **environ (str):  The environment the topology is running in (eg.
+                              prod, devel, test, etc).
+
+        Returns:
+            pandas.DataFrame: A DataFrame containing the service time
+            measurements as a timeseries. Each row represents a measurement
+            (aggregated over one minute) with the following columns:
+
+            * timestamp:  The UTC timestamp for the metric,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container:  The ID for the container this metric comes from,
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            * latency_ms: The average execute latency measurement in
+              milliseconds for that metric time period.
+
+        Raises:
+            KeyError:   If the any of the required keyword arguments are
+                        missing.
+            RuntimeWarning: If the specified topology has a reliability mode
+                            that does not enable complete latency.
+        """
+        try:
+            cluster: str = cast(str, kwargs["cluster"])
+            environ: str = cast(str, kwargs["environ"])
+        except KeyError as kerr:
+            ke_msg: str = (f"Keyword argument: {kerr.args[0]} should be "
+                           f"supplied.")
+            LOG.error(ke_msg)
+            raise KeyError(ke_msg)
+
+        # First we need to check that the supplied topology will actually have
+        # complete latencies. Only ATLEAST_ONCE and EXACTLY_ONCE will have
+        # complete latency values as acking is disabled for ATMOST_ONCE.
+        physical_plan: Dict[str, Any] = tracker.get_physical_plan(
+            self.tracker_url, cluster, environ, topology_id)
+        if (physical_plan["config"]
+                ["topology.reliability.mode"] == "ATMOST_ONCE"):
+            rm_msg: str = (f"Topology {topology_id} reliability mode is set "
+                           f"to ATMOST_ONCE. Complete latency is not "
+                           f"available for these types of topologies")
+            LOG.warning(rm_msg)
+            warnings.warn(rm_msg, RuntimeWarning)
+            return pd.DataFrame()
+
+        logical_plan: Dict[str, Any] = tracker.get_logical_plan(
+            self.tracker_url, cluster, environ, topology_id)
+
+        time_check(start, end, self.time_limit_hrs)
+
+        start_time: int = int(round(start.timestamp()))
+        end_time: int = int(round(end.timestamp()))
+
+        output: pd.DataFrame = None
+
+        spouts: Dict[str, Any] = logical_plan["spouts"]
+        for spout_component in spouts:
+
+            try:
+                spout_complete_latencies: pd.DataFrame = \
+                        self.get_spout_complete_latencies(topology_id,
+                                                          cluster, environ,
+                                                          spout_component,
+                                                          start_time, end_time,
+                                                          logical_plan)
+            except HTTPError as http_error:
+                LOG.warning("Fetching execute latencies  for component %s "
+                            "failed with status code %s", spout_component,
+                            str(http_error.response.status_code))
+
+            if output is None:
+                output = spout_complete_latencies
+            else:
+                output = output.append(spout_complete_latencies,
+                                       ignore_index=True)
 
         return output
 

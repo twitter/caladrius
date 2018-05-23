@@ -15,7 +15,8 @@ from caladrius.metrics.heron.client import HeronMetricsClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-#pylint: disable=too-many-arguments, too-many-locals
+# pylint: disable=too-many-arguments, too-many-locals
+
 
 def convert_dt_to_ts(dt_object: dt.datetime) -> int:
     """ Helper method to convert datetime object into cuckoo integer
@@ -23,16 +24,17 @@ def convert_dt_to_ts(dt_object: dt.datetime) -> int:
 
     return int(round(dt_object.timestamp()))
 
+
 def parse_metric_details(details: Dict[str, List[str]]) -> Dict[str, Any]:
     """ Helper method for extracting details from metric name strings.
 
     Arguments:
-        details (dict): dictionary of metric details returned by the cuckoo
-                        API
+        details (dict): A dictionary of metric details returned by the cuckoo
+                        API.
 
     Returns:
-        A dictionary with the following keys: "container", "component", "task",
-        "source_component".
+        Dict[str, Any]: A dictionary with the following keys: "container",
+        "component", "task", "source_component".
     """
 
     ref_list: List[str] = details["sources"][0].split("/")
@@ -42,18 +44,18 @@ def parse_metric_details(details: Dict[str, List[str]]) -> Dict[str, Any]:
     container_num: int = int(instance_list[1])
     task_id: int = int(instance_list[3])
 
-
     metrics_list: List[str] = details["metrics"][0].split("/")
 
-    instance_details: Dict[str, Any] = {"container" : container_num,
-                                        "component" : component,
-                                        "task" : task_id}
+    instance_details: Dict[str, Any] = {"container": container_num,
+                                        "component": component,
+                                        "task": task_id}
 
     if "receive-count" in metrics_list[0]:
         instance_details["source_component"] = metrics_list[1]
         instance_details["source_task"] = int(metrics_list[2])
         stream: str = metrics_list[3]
-    elif "emit-count" in metrics_list[0]:
+    elif ("emit-count" in metrics_list[0] or
+          "complete-latency" in metrics_list[0]):
         stream = metrics_list[1]
     else:
         stream = metrics_list[2]
@@ -62,6 +64,7 @@ def parse_metric_details(details: Dict[str, List[str]]) -> Dict[str, Any]:
     instance_details["stream"] = stream
 
     return instance_details
+
 
 class HeronCuckooClient(HeronMetricsClient):
     """ Class for extracting heron metrics from the Cuckoo timeseries database.
@@ -99,7 +102,7 @@ class HeronCuckooClient(HeronMetricsClient):
         metrics database.
 
         Returns:
-            A list of service name strings.
+            List[str]:  A list of service name strings.
         """
 
         url: str = self.base_url + "/services"
@@ -115,7 +118,7 @@ class HeronCuckooClient(HeronMetricsClient):
         the Cuckoo metrics database.
 
         Returns:
-            A list of heron service (topology) name strings.
+            List[str]:  A list of heron service (topology) name strings.
         """
 
         services: List[str] = self.get_services()
@@ -134,13 +137,13 @@ class HeronCuckooClient(HeronMetricsClient):
                             listed.
 
         Returns:
-            A list of source name strings.
+            List[str]:  A list of source name strings.
         """
 
         url: str = self.base_url + "/sources"
 
         response: requests.Response = requests.get(
-            url, params={"service" : service})
+            url, params={"service": service})
 
         response.raise_for_status()
 
@@ -152,32 +155,34 @@ class HeronCuckooClient(HeronMetricsClient):
         supplied (or default) zone.
 
         Arguments:
-            service (str):  The name of the service where the source is running.
-            source (str): The name of the source whose metrics are to be listed.
+            service (str):  The name of the service where the source is
+                            running.
+            source (str):   The name of the source whose metrics are to be
+                            listed.
 
         Returns:
-            A list of metric name strings.
+            List[str]:  A list of metric name strings.
         """
 
         url: str = self.base_url + "/metrics"
 
         response: requests.Response = requests.get(url,
-                                                   params={"service" : service,
-                                                           "source" : source})
+                                                   params={"service": service,
+                                                           "source": source})
 
         response.raise_for_status()
 
         return response.json()
 
     def query(self, query_str: str, query_name: str, granularity: str,
-              start: int = None, end: int = None)  -> Dict[str, Any]:
+              start: int = None, end: int = None) -> Dict[str, Any]:
         """ Run the supplied query against the cuckoo database.
 
         Arguments:
             query_str (str): The CQL query string.
             query_name (str): A reference string for this query.
-            granularity (str):   The time granularity for this query, can be one
-                                of "h", "m", "s".
+            granularity (str):  The time granularity for this query, can be
+                                one of "h", "m", "s".
             start (int):    Optional start time for the time period the query
                             is run against. This should be UNIX time integer
                             (seconds since epoch). If not supplied then the
@@ -192,8 +197,8 @@ class HeronCuckooClient(HeronMetricsClient):
                         be ignored.
 
         Returns:
-            A dictionary parsed from the JSON string returned by the get
-            request to the Cuckoo database.
+            Dict[str, Any]: A dictionary parsed from the JSON string returned
+            by the get request to the Cuckoo database.
 
         Raises:
             requests.HTTPError: If the request returns anything other than a
@@ -206,8 +211,8 @@ class HeronCuckooClient(HeronMetricsClient):
         url: str = self.base_url + "/query"
 
         payload: Dict[str, Union[str, int]] = \
-            {"query" : query_str, "client_source" : self.client_name,
-             "granularity" : granularity, "name" : query_name}
+            {"query": query_str, "client_source": self.client_name,
+             "granularity": granularity, "name": query_name}
 
         if start:
             payload["start"] = start
@@ -227,7 +232,6 @@ class HeronCuckooClient(HeronMetricsClient):
             LOG.info("No start or end time supplied for this query so "
                      "default window used for this query")
 
-
         response: requests.Response = requests.get(url, params=payload)
 
         # Raise an exception if the status code is not OK
@@ -242,7 +246,6 @@ class HeronCuckooClient(HeronMetricsClient):
 
         return json_response
 
-
     def get_service_times(self, topology_id: str, start: dt.datetime = None,
                           end: dt.datetime = None,
                           **kwargs: Union[str, int, float]) -> pd.DataFrame:
@@ -253,36 +256,38 @@ class HeronCuckooClient(HeronMetricsClient):
 
         Arguments:
             topology_id (str):    The topology identification string.
-            start (dt.datetime):    Optional start time for the time period the
-                                    query is run against. This should be a UTC
-                                    datetime object. If not supplied then the
-                                    default time window (e.g. the last 2 hours)
-                                    will be used for the supplied query. If
-                                    only the start time is supplied then the
-                                    period from the start time to the current
-                                    time will be used,
-            end (dt.datetime):  Optional end time for the time period the query
-                                is run against. This should be UTC datetime
-                                object. This should not be supplied without a
-                                corresponding start time. If it is, it will be
-                                ignored.
+            start (datetime):   Optional start time for the time period the
+                                query is run against. This should be a UTC
+                                datetime object. If not supplied then the
+                                default time window (e.g. the last 2 hours)
+                                will be used for the supplied query. If
+                                only the start time is supplied then the
+                                period from the start time to the current
+                                time will be used,
+            end (datetime): Optional end time for the time period the query
+                            is run against. This should be UTC datetime
+                            object. This should not be supplied without a
+                            corresponding start time. If it is, it will be
+                            ignored.
             **granularity (str):  Optional time granularity for this query, can
                                   be one of "h", "m", "s". Defaults to "m".
 
         Returns:
-            A pandas DataFrame containing the service time measurements as a
-            timeseries. Each row represents a measurement (averaged over the
-            specified granularity) with the following columns:
-                timestamp:  The UTC timestamp for the metric.
-                component: The component this metric comes from.
-                task:   The instance ID number for the instance that the metric
-                        comes from.
-                container:  The ID for the container this metric comes from.
-                source_component:   The name of the component that issued the
-                                    tuples that resulted in this metric.
-                stream: The name of the incoming stream from which the tuples
-                        that lead to this metric came from.
-                latency_ms: The execute latency measurement in milliseconds.
+            pandas.DataFrame: A pandas DataFrame containing the service time
+            measurements as a timeseries. Each row represents a measurement
+            (averaged over the specified granularity) with the following
+            columns:
+
+            - timestamp: The UTC timestamp for the metric,
+            - component: The component this metric comes from,
+            - task: The instance ID number for the instance that the metric
+              comes from,
+            - container: The ID for the container this metric comes from,
+            - source_component: The name of the component that issued the
+              tuples that resulted in this metric,
+            - stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            - latency_ms: The execute latency measurement in milliseconds.
         """
 
         query_str: str = (f"ts(avg, heron/{topology_id}, /*/*, "
@@ -328,13 +333,13 @@ class HeronCuckooClient(HeronMetricsClient):
 
                 for entry in instance["data"]:
                     row: Dict[str, Any] = {
-                        "timestamp" : dt.datetime.utcfromtimestamp(entry[0]),
-                        "component" : details["component"],
-                        "task" : details["task"],
-                        "container" : details["container"],
-                        "source_component" : details["source_component"],
-                        "stream" : details["stream"],
-                        "latency_ms" : entry[1] / 1000000.0}
+                        "timestamp": dt.datetime.utcfromtimestamp(entry[0]),
+                        "component": details["component"],
+                        "task": details["task"],
+                        "container": details["container"],
+                        "source_component": details["source_component"],
+                        "stream": details["stream"],
+                        "latency_ms": entry[1] / 1000000.0}
                     output.append(row)
 
         return pd.DataFrame(output)
@@ -348,36 +353,37 @@ class HeronCuckooClient(HeronMetricsClient):
 
         Arguments:
             topology_id (str):    The topology identification string.
-            start (dt.datetime):    Optional start time for the time period the
-                                    query is run against. This should be a UTC
-                                    datetime object. If not supplied then the
-                                    default time window (e.g. the last 2 hours)
-                                    will be used for the supplied query. If
-                                    only the start time is supplied then the
-                                    period from the start time to the current
-                                    time will be used,
-            end (dt.datetime):  Optional end time for the time period the query
-                                is run against. This should be UTC datetime
-                                object. This should not be supplied without a
-                                corresponding start time. If it is, it will be
-                                ignored.
+            start (datetime):   Optional start time for the time period the
+                                query is run against. This should be a UTC
+                                datetime object. If not supplied then the
+                                default time window (e.g. the last 2 hours)
+                                will be used for the supplied query. If
+                                only the start time is supplied then the
+                                period from the start time to the current
+                                time will be used,
+            end (datetime): Optional end time for the time period the query
+                            is run against. This should be UTC datetime
+                            object. This should not be supplied without a
+                            corresponding start time. If it is, it will be
+                            ignored.
             **granularity (str):  Optional time granularity for this query, can
                                   be one of "h", "m", "s". Defaults to "m".
 
         Returns:
-            A pandas DataFrame containing the execution count measurements as a
-            timeseries. Each row represents a measurement (summed over the
-            specified granularity) with the following columns:
-            timestamp:  The UTC timestamp for the metric.
-            component: The component this metric comes from.
-            task:   The instance ID number for the instance that the metric
-                    comes from.
-            container:  The ID for the container this metric comes from.
-            source_component:   The name of the component that issued the
-                                tuples that resulted in this metric.
-            stream: The name of the incoming stream from which the tuples
-                    that lead to this metric came from.
-            execute_count:  The execution count for this instance.
+            pandas.DataFrame: A DataFrame containing the execution count
+            measurements as a timeseries. Each row represents a measurement
+            (summed over the specified granularity) with the following columns:
+
+            * timestamp: The UTC timestamp for the metric,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from,
+            * source_component: The name of the component that issued the,
+              tuples that resulted in this metric.
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            * execute_count: The execution count for this instance.
         """
 
         query_str: str = (f"ts(sum, heron/{topology_id}, /*/*, "
@@ -422,13 +428,13 @@ class HeronCuckooClient(HeronMetricsClient):
                     parse_metric_details(instance["source"])
                 for entry in instance["data"]:
                     row: Dict[str, Any] = {
-                        "timestamp" : dt.datetime.utcfromtimestamp(entry[0]),
-                        "component" : details["component"],
-                        "task" : details["task"],
-                        "container" : details["container"],
-                        "source_component" : details["source_component"],
-                        "stream" : details["stream"],
-                        "execute_count" : int(entry[1])}
+                        "timestamp": dt.datetime.utcfromtimestamp(entry[0]),
+                        "component": details["component"],
+                        "task": details["task"],
+                        "container": details["container"],
+                        "source_component": details["source_component"],
+                        "stream": details["stream"],
+                        "execute_count": int(entry[1])}
                     output.append(row)
 
         return pd.DataFrame(output)
@@ -442,36 +448,37 @@ class HeronCuckooClient(HeronMetricsClient):
 
         Arguments:
             topology_id (str):    The topology identification string.
-            start (dt.datetime):    Optional start time for the time period the
-                                    query is run against. This should be a UTC
-                                    datetime object. If not supplied then the
-                                    default time window (e.g. the last 2 hours)
-                                    will be used for the supplied query. If
-                                    only the start time is supplied then the
-                                    period from the start time to the current
-                                    time will be used,
-            end (dt.datetime):  Optional end time for the time period the query
-                                is run against. This should be UTC datetime
-                                object. This should not be supplied without a
-                                corresponding start time. If it is, it will be
-                                ignored.
+            start (datetime):   Optional start time for the time period the
+                                query is run against. This should be a UTC
+                                datetime object. If not supplied then the
+                                default time window (e.g. the last 2 hours)
+                                will be used for the supplied query. If
+                                only the start time is supplied then the
+                                period from the start time to the current
+                                time will be used,
+            end (datetime): Optional end time for the time period the query
+                            is run against. This should be UTC datetime
+                            object. This should not be supplied without a
+                            corresponding start time. If it is, it will be
+                            ignored.
             granularity (str):  Optional time granularity for this query, can
                                 be one of "h", "m", "s". Defaults to "m".
 
         Returns:
-            A pandas DataFrame containing the emit count measurements as a
-            timeseries. Each row represents a measurement (summed over the
-            specified granularity) with the following columns:
-                timestamp:  The UTC timestamp for the metric.
-                component: The component this metric comes from.
-                task:   The instance ID number for the instance that the metric
-                        comes from.
-                container:  The ID for the container this metric comes from.
-                source_component:   The name of the component that issued the
-                                    tuples that resulted in this metric.
-                stream: The name of the incoming stream from which the tuples
-                        that lead to this metric came from.
-                emit_count:  The emit count for this instance.
+            pandas.DataFrame: A DataFrame containing the emit count
+            measurements as a timeseries. Each row represents a measurement
+            (summed over the specified granularity) with the following columns:
+
+            * timestamp: The UTC timestamp for the metric,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from,
+            * source_component: The name of the component that issued the,
+              tuples that resulted in this metric.
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            * emit_count: The emit count for this instance.
         """
 
         query_str: str = (f"ts(sum, heron/{topology_id}, /*/*, "
@@ -524,12 +531,12 @@ class HeronCuckooClient(HeronMetricsClient):
                 parse_metric_details(instance["source"])
             for entry in instance["data"]:
                 row: Dict[str, Any] = {
-                    "timestamp" : dt.datetime.utcfromtimestamp(entry[0]),
-                    "component" : details["component"],
-                    "task" : details["task"],
-                    "container" : details["container"],
-                    "stream" : details["stream"],
-                    "emit_count" : int(entry[1])}
+                    "timestamp": dt.datetime.utcfromtimestamp(entry[0]),
+                    "component": details["component"],
+                    "task": details["task"],
+                    "container": details["container"],
+                    "stream": details["stream"],
+                    "emit_count": int(entry[1])}
                 output.append(row)
 
         return pd.DataFrame(output)
@@ -541,43 +548,44 @@ class HeronCuckooClient(HeronMetricsClient):
         of every component in the specified topology. The start and end
         times for the window over which to gather metrics can be specified.
 
-        *NOTE*: This is not (yet) a default metric supplied by Heron so a
+        **NOTE**: This is not (yet) a default metric supplied by Heron so a
         custom metric class must be used in your topology to provide this.
 
         Arguments:
             topology_id (str):    The topology identification string.
-            start (dt.datetime):    Optional start time for the time period the
-                                    query is run against. This should be a UTC
-                                    datetime object. If not supplied then the
-                                    default time window (e.g. the last 2 hours)
-                                    will be used for the supplied query. If
-                                    only the start time is supplied then the
-                                    period from the start time to the current
-                                    time will be used,
-            end (dt.datetime):  Optional end time for the time period the query
-                                is run against. This should be UTC datetime
-                                object. This should not be supplied without a
-                                corresponding start time. If it is, it will be
-                                ignored.
+            start (datetime):   Optional start time for the time period the
+                                query is run against. This should be a UTC
+                                datetime object. If not supplied then the
+                                default time window (e.g. the last 2 hours)
+                                will be used for the supplied query. If
+                                only the start time is supplied then the
+                                period from the start time to the current
+                                time will be used,
+            end (datetime): Optional end time for the time period the query
+                            is run against. This should be UTC datetime
+                            object. This should not be supplied without a
+                            corresponding start time. If it is, it will be
+                            ignored.
             **granularity (str):    The time granularity for this query, can be
                                     one of "h", "m", "s". Defaults to "m".
 
         Returns:
-            A pandas DataFrame containing the execution count measurements as a
-            timeseries. Each row represents a measurement (summed over the
-            specified granularity) with the following columns:
-            timestamp:  The UTC timestamp for the metric.
-            component: The component this metric comes from.
-            task:   The Instance ID number for the instance that the metric
-                    comes from.
-            container:  The ID for the container this metric comes from.
-            source_component:   The name of the component that issued the
-                                tuples that resulted in this metric.
-            source_task:    The Instance ID number for the instance that the
-                            tuples that produced this metric were sent from.
-            stream: The name of the incoming stream from which the tuples that
-                    lead to this metric came from.
-            receive_count:  The tuples received count for this instance.
+            pandas.DataFrame: A DataFrame containing the execution count
+            measurements as a timeseries. Each row represents a measurement
+            (summed over the specified granularity) with the following columns:
+
+            * timestamp: The UTC timestamp for the metric,
+            * component: The component this metric comes from,
+            * task: The Instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from,
+            * source_component: The name of the component that issued the
+              tuples that resulted in this metric,
+            * source_task: The Instance ID number for the instance that the
+              tuples that produced this metric were sent from,
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from.,
+            * receive_count:  The tuples received count for this instance.
         """
 
         query_str: str = (f"ts(heron/{topology_id}, /*/*, "
@@ -626,14 +634,114 @@ class HeronCuckooClient(HeronMetricsClient):
             details: Dict[str, Any] = parse_metric_details(instance["source"])
             for entry in instance["data"]:
                 row: Dict[str, Any] = {
-                    "timestamp" : dt.datetime.utcfromtimestamp(entry[0]),
-                    "component" : details["component"],
-                    "task" : details["task"],
-                    "container" : details["container"],
-                    "source_component" : details["source_component"],
-                    "source_task" : details["source_task"],
-                    "stream" : details["stream"],
-                    "receive_count" : int(entry[1])}
+                    "timestamp": dt.datetime.utcfromtimestamp(entry[0]),
+                    "component": details["component"],
+                    "task": details["task"],
+                    "container": details["container"],
+                    "source_component": details["source_component"],
+                    "source_task": details["source_task"],
+                    "stream": details["stream"],
+                    "receive_count": int(entry[1])}
                 output.append(row)
+
+        return pd.DataFrame(output)
+
+    def get_complete_latencies(self, topology_id: str,
+                               start: dt.datetime = None,
+                               end: dt.datetime = None,
+                               **kwargs: Union[str, int, float]
+                               ) -> pd.DataFrame:
+        """ Gets the complete latency, as a timeseries, for every instance of
+        every spout component of the specified topology. The start and end
+        times for the window over which to gather metrics, as well as the
+        granularity of the time series can also be specified.
+
+        Arguments:
+            topology_id (str):    The topology identification string.
+            start (datetime):   Optional start time for the time period the
+                                query is run against. This should be a UTC
+                                datetime object. If not supplied then the
+                                default time window (e.g. the last 2 hours)
+                                will be used for the supplied query. If
+                                only the start time is supplied then the
+                                period from the start time to the current
+                                time will be used,
+            end (datetime): Optional end time for the time period the query
+                            is run against. This should be UTC datetime
+                            object. This should not be supplied without a
+                            corresponding start time. If it is, it will be
+                            ignored.
+            **granularity (str):  Optional time granularity for this query, can
+                                  be one of "h", "m", "s". Defaults to "m".
+
+        Returns:
+            pandas.DataFrame:   A pandas DataFrame containing the service time
+            measurements as a timeseries. Each row represents a measurement
+            (averaged over the specified granularity) with the following
+            columns:
+
+            * timestamp: The UTC timestamp for the metric,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from,
+            * source_component: The name of the component that issued the
+              tuples that resulted in this metric,
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            * complete_latency_ms: The execute latency measurement in
+              milliseconds.
+        """
+
+        query_str: str = (f"ts(avg, heron/{topology_id}, /*/*, "
+                          f"__complete-latency/*)")
+
+        if start:
+            start_ts: Optional[int] = convert_dt_to_ts(start)
+        else:
+            start_ts = None
+
+        if end:
+            end_ts: Optional[int] = convert_dt_to_ts(end)
+        else:
+            end_ts = None
+
+        if start and end:
+            LOG.info("Querying for complete latencies for topology: %s over "
+                     "a period of %d seconds from %s to %s UTC", topology_id,
+                     (end-start).total_seconds(), start.isoformat(),
+                     end.isoformat())
+
+        if "granularity" not in kwargs:
+            granularity: str = "m"
+        else:
+            granularity = cast(str, kwargs["granularity"])
+
+        json_response: Dict[str, Any] = self.query(query_str,
+                                                   "execute latency",
+                                                   granularity, start_ts,
+                                                   end_ts)
+
+        output: List[Dict[str, Any]] = []
+
+        for instance in json_response["timeseries"]:
+
+            # Ignore returned values from the system components such as
+            # "__stmgr__" as they do not have execute-latency stats
+            if "__" in instance["source"]["sources"][0]:
+                continue
+            else:
+                details: Dict[str, Any] = \
+                    parse_metric_details(instance["source"])
+
+                for entry in instance["data"]:
+                    row: Dict[str, Any] = {
+                        "timestamp": dt.datetime.utcfromtimestamp(entry[0]),
+                        "component": details["component"],
+                        "task": details["task"],
+                        "container": details["container"],
+                        "stream": details["stream"],
+                        "latency_ms": entry[1] / 1000000.0}
+                    output.append(row)
 
         return pd.DataFrame(output)
