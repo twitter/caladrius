@@ -16,10 +16,10 @@ from caladrius.metrics.heron.topology import groupings
 LOG: logging.Logger = logging.getLogger(__name__)
 
 
-def add_conf_info(tracker_url: str,
+def add_pplan_info(tracker_url: str,
                   topologies: pd.DataFrame = None) -> pd.DataFrame:
-    """ Adds information from the physical plan config dictionary to the
-    topologies summary DataFrame.
+    """ Adds information from the physical plan to the topologies summary
+    DataFrame.
 
     Arguments:
         tracker_url (str):  The URL for the Heron Tracker API
@@ -28,14 +28,14 @@ def add_conf_info(tracker_url: str,
                                     fetched fresh from the Tracker API.
 
     Returns:
-        pandas.DataFrame:   The topologies summary DataFrame with config
+        pandas.DataFrame:   The topologies summary DataFrame with physical plan
         information added. This will return a new DataFrame and will not modify
         the supplied DataFrame
     """
     if topologies is None:
         topologies = tracker.get_topologies(tracker_url)
 
-    output: List[Dict[str, Union[str, float]]] = []
+    output: List[Dict[str, Union[str, float, List[int]]]] = []
 
     for (cluster, environ, user), data in topologies.groupby(["cluster",
                                                               "environ",
@@ -49,8 +49,9 @@ def add_conf_info(tracker_url: str,
                 # If we cannot fetch the plan, skip this topology
                 continue
 
+            # Add information from the configuration dictionary
             config: Dict[str, str] = pplan["config"]
-            row: Dict[str, Union[str, float]] = {}
+            row: Dict[str, Union[str, float, List[int]]] = {}
             row["topology"] = topology_id
             row["cluster"] = cluster
             row["environ"] = environ
@@ -58,12 +59,16 @@ def add_conf_info(tracker_url: str,
             for key, value in config.items():
 
                 # Some of the custom config values are large dictionaries or
-                # list so we will skip them
+                # lists so we will skip them
                 if isinstance(value, (dict, list)):
                     continue
 
+                # Replace "." with "_" in the key name so we can use namespace
+                # calls on the DataFrame
                 new_key: str = "_".join(key.split(".")[1:])
 
+                # Try to convert any values that numeric so we can do summary
+                # stats
                 try:
                     new_value: Union[str, float] = float(value)
                 except ValueError:
@@ -73,6 +78,13 @@ def add_conf_info(tracker_url: str,
                               " was a %s", key, str(type(value)))
 
                 row[new_key] = new_value
+
+            # Add instances stats for this topology
+            row["total_instances"] = len(pplan["instances"])
+            row["instances_per_container_dist"] = \
+                [len(pplan["stmgrs"][stmgr]["instance_ids"])
+                 for stmgr in pplan["stmgrs"]]
+
             output.append(row)
 
     return pd.DataFrame(output)
@@ -104,15 +116,15 @@ if __name__ == "__main__":
     TOPOS_BY_ENV = TOPOS_BY_ENV.reset_index()
 
     # Add config options
-    TOPO_CONF: pd.DataFrame = add_conf_info(TRACKER_URL, TOPOLOGIES)
+    TOPO_PPLAN: pd.DataFrame = add_pplan_info(TRACKER_URL, TOPOLOGIES)
 
-    MG_TOTAL_TOPOS: int = TOPO_CONF.reliability_mode.count()
+    MG_TOTAL_TOPOS: int = TOPO_PPLAN.reliability_mode.count()
 
     # Message Guarantee stats
 
     # Overall
     MG_OVERALL: pd.Series = \
-        (TOPO_CONF.groupby("reliability_mode").topology.count())
+        (TOPO_PPLAN.groupby("reliability_mode").topology.count())
     MG_OVERALL = MG_OVERALL.reset_index()
     MG_OVERALL.rename(index=str, columns={"topology": "mg_overall_count"},
                       inplace=True)
@@ -121,14 +133,14 @@ if __name__ == "__main__":
 
     # By Cluster
     MG_BY_CLUSTER: pd.DataFrame = pd.DataFrame(
-        TOPO_CONF.groupby(["cluster", "reliability_mode"]).topology.count())
+        TOPO_PPLAN.groupby(["cluster", "reliability_mode"]).topology.count())
     MG_BY_CLUSTER = MG_BY_CLUSTER.reset_index()
     MG_BY_CLUSTER.rename(index=str, columns={"topology": "mg_cluster_count"},
                          inplace=True)
     MG_BY_CLUSTER = MG_BY_CLUSTER.merge(
         (MG_BY_CLUSTER.groupby("cluster").mg_cluster_count.sum()
          .reset_index().rename(
-            index=str, columns={"mg_cluster_count": "mg_cluster_total"})),
+             index=str, columns={"mg_cluster_count": "mg_cluster_total"})),
         on="cluster")
 
     MG_BY_CLUSTER["overall_percentage"] = ((MG_BY_CLUSTER.mg_cluster_count /
@@ -138,19 +150,19 @@ if __name__ == "__main__":
                                            * 100)
     # By Environment
     MG_BY_ENV: pd.DataFrame = pd.DataFrame(
-        TOPO_CONF.groupby(["environ", "reliability_mode"]).topology.count())
+        TOPO_PPLAN.groupby(["environ", "reliability_mode"]).topology.count())
     MG_BY_ENV = MG_BY_ENV.reset_index()
     MG_BY_ENV.rename(index=str, columns={"topology": "mg_environ_count"},
                      inplace=True)
     MG_BY_ENV = MG_BY_ENV.merge(
         (MG_BY_ENV.groupby("environ").mg_environ_count.sum()
          .reset_index().rename(
-            index=str, columns={"mg_environ_count": "mg_environ_total"})),
+             index=str, columns={"mg_environ_count": "mg_environ_total"})),
         on="environ")
 
     MG_BY_ENV["overall_percentage"] = ((MG_BY_ENV.mg_environ_count /
                                         MG_TOTAL_TOPOS) * 100)
-    MG_BY_ENV["cluster_percentage"] = ((MG_BY_ENV.mg_environ_count /
+    MG_BY_ENV["environ_percentage"] = ((MG_BY_ENV.mg_environ_count /
                                         MG_BY_ENV.mg_environ_total)
                                        * 100)
 
@@ -180,35 +192,57 @@ if __name__ == "__main__":
                                 "% of Total":
                                 (grouping_only_count / TOTAL_TOPOS * 100)})
 
+    PERCENTILES: List[float] = [.10, .25, .5, .75, .95, .99]
+
     print("-------------------")
     print("Heron Tracker Stats")
     print("-------------------")
 
     print(f"\nTotal topologies: {TOTAL_TOPOS}")
     print("\nTotal topologies by cluster:\n")
-    print(TOPOS_BY_CLUSTER.to_string())
+    print(TOPOS_BY_CLUSTER.to_string(index=False))
     print("\nTotal topologies by environment:\n")
-    print(TOPOS_BY_ENV.to_string())
+    print(TOPOS_BY_ENV.to_string(index=False))
 
     print("\n-------------------")
-    print("Stream manager stats:\n")
+    print("Container stats:\n")
 
-    print(TOPO_CONF.stmgrs.describe().to_string())
+    print(TOPO_PPLAN.stmgrs.describe(percentiles=PERCENTILES).to_string())
+
+    print("\nTop 10 Largest topologies by container count:\n")
+    print(TOPO_PPLAN.sort_values(by="stmgrs", ascending=False)
+          [["topology", "cluster", "environ", "user", "stmgrs"]]
+          .head(10).to_string(index=False))
+
+    print("\n-------------------")
+    print("Instance stats:\n")
+
+    print("\nStatistics for total number of instance per topology:\n")
+    print(TOPO_PPLAN.total_instances.describe(
+        percentiles=PERCENTILES).to_string())
+
+    print("\nTop 10 Largest topologies by instance count:\n")
+    print(TOPO_PPLAN.sort_values(by="total_instances", ascending=False)
+          [["topology", "cluster", "environ", "user", "total_instances"]]
+          .head(10).to_string(index=False))
+
+    print("\nStatistics for instances per container:\n")
+    output: List[int] = []
+    for index, dist in TOPO_PPLAN.instances_per_container_dist.iteritems():
+        output.extend(dist)
+    print(pd.Series(output).describe(percentiles=PERCENTILES).to_string())
 
     print("\n-------------------")
     print("Message guarantee stats:\n")
 
-    print("\nPercentage of topologies with each message guarantee type - "
-          "Overall\n")
+    print("\nTopologies with each message guarantee type - Overall\n")
     print(MG_OVERALL.to_string())
 
-    print("\nPercentage of topologies with each message guarantee type - "
-          "Cluster\n")
-    print(MG_BY_CLUSTER.to_string())
+    print("\nTopologies with each message guarantee type by Cluster\n")
+    print(MG_BY_CLUSTER.set_index(["cluster", "reliability_mode"]).to_string())
 
-    print("\nPercentage of topologies with each message guarantee type - "
-          "Environment\n")
-    print(MG_BY_ENV.to_string())
+    print("\nTopologies with each message guarantee type by Environment\n")
+    print(MG_BY_ENV.set_index(["environ", "reliability_mode"]).to_string())
 
     print("\n-------------------")
     print("Stream grouping stats:\n")
@@ -217,7 +251,8 @@ if __name__ == "__main__":
     print(GROUPING_OVERALL.to_string())
 
     print("\nPercentage of topologies with each grouping - Per Environment:\n")
-    print(GROUPING_ENVIRON.to_string())
+    print(GROUPING_ENVIRON.drop(["topology", "cluster", "user"],
+                                axis=1).to_string())
 
     print("\nTopologies with only a single grouping type:\n")
     print(pd.DataFrame(SINGLE_GROUPING).to_string())
