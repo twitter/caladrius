@@ -1,7 +1,12 @@
 """ Script for displaying statistics for all topologies registered with a
 Heron Tracker instance."""
+import os
 import sys
 import logging
+import argparse
+import pickle
+
+import datetime as dt
 
 from typing import List, Dict, Union, Any
 
@@ -13,11 +18,61 @@ from caladrius import logs
 from caladrius.common.heron import tracker
 from caladrius.metrics.heron.topology import groupings
 
-LOG: logging.Logger = logging.getLogger(__name__)
+LOG: logging.Logger = logging.getLogger("caladrius.tools.heron.tracker_stats")
+
+
+def summarise_groupings(tracker_url: str,
+                        topologies: pd.DataFrame = None) -> pd.DataFrame:
+    """ Summarises the stream grouping counts of all topologies registered with
+    the supplied Tracker instance.
+
+    Arguments:
+        tracker_url (str):  The URL for the Heron Tracker API
+        topologies (pd.DataFrame):  The topologies summary from the heron
+                                    tracker can be supplied, if not it will
+                                    fetched fresh from the trackerAPI.
+
+    Returns:
+        A DataFrame with columns for:
+        topology: The topology ID
+        cluster: The cluster the topology is running on
+        environ: The environment the topology is running in
+        user: The user that uploaded the topology
+        A column for each type of stream grouping as well as combinations of
+        stream grouping (incoming grouping)->(outgoing grouping) and their
+        associate frequency count for each topology.
+    """
+    if topologies is None:
+        topologies = tracker.get_topologies(tracker_url)
+
+    output: pd.DataFrame = None
+
+    for (cluster, environ), data in topologies.groupby(["cluster", "environ"]):
+        for topology in data.topology:
+
+            try:
+                grouping_summary: Dict[str, int] = \
+                    groupings.summary(tracker_url, topology, cluster, environ)
+            except requests.HTTPError:
+                LOG.warning("Unable to fetch grouping summary for topology: "
+                            "%s, cluster: %s, environ: %s", topology, cluster,
+                            environ)
+            else:
+                grouping_summary["topology"] = topology
+                grouping_df: pd.DataFrame = pd.DataFrame([grouping_summary])
+
+                if output is None:
+                    output = grouping_df
+                else:
+                    output = output.append(grouping_df)
+
+    output = output.merge(topologies, on="topology")
+
+    return output
 
 
 def add_pplan_info(tracker_url: str,
-                  topologies: pd.DataFrame = None) -> pd.DataFrame:
+                   topologies: pd.DataFrame = None) -> pd.DataFrame:
     """ Adds information from the physical plan to the topologies summary
     DataFrame.
 
@@ -90,13 +145,159 @@ def add_pplan_info(tracker_url: str,
     return pd.DataFrame(output)
 
 
+def _get_mg_summary(topo_pplan: pd.DataFrame, groupby_term: str):
+
+    mg_summary: pd.DataFrame = pd.DataFrame(
+        topo_pplan.groupby([groupby_term,
+                            "reliability_mode"]).topology.count())
+    mg_summary = mg_summary.reset_index()
+    mg_summary.rename(index=str,
+                      columns={"topology": f"mg_{groupby_term}_count"},
+                      inplace=True)
+    mg_summary = mg_summary.merge(
+        (mg_summary.groupby(groupby_term)[f"mg_{groupby_term}_count"].sum()
+         .reset_index().rename(
+             index=str,
+             columns={f"mg_{groupby_term}_count":
+                      f"mg_{groupby_term}_total"})),
+        on=groupby_term)
+
+    mg_summary["overall_percentage"] = \
+        (mg_summary[f"mg_{groupby_term}_count"] /
+         topo_pplan.reliability_mode.count()
+         * 100)
+    mg_summary[f"{groupby_term}_percentage"] = \
+        (mg_summary[f"mg_{groupby_term}_count"] /
+         mg_summary[f"mg_{groupby_term}_total"] * 100)
+
+    return mg_summary
+
+
+def _create_parser() -> argparse.ArgumentParser:
+
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(
+        description=("This program provides various statistics about the "
+                     "topologies running on a Heron Tracker instance"))
+
+    parser.add_argument("-t", "--tracker", required=False, type=str,
+                        help=("The URL to the Heron Tracker API"))
+
+    parser.add_argument("-r", "--reload", required=False, action="store_true",
+                        help=("If supplied then fresh information will be "
+                              "pulled from the Heron Tracker API. Otherwise "
+                              "cached data will be used."))
+
+    parser.add_argument("-cd", "--cache_dir", required=False, type=str,
+                        default="/tmp/caladrius/heron/tracker/stats",
+                        help=("The temporary directory to store Tracker "
+                              "information."))
+
+    parser.add_argument("-o", "--output", required=False, type=str,
+                        help=("Output file path for the statistic summary to "
+                              "be printed to. If not supplied out will be "
+                              "sent to standard out."))
+
+    parser.add_argument("-q", "--quiet", required=False, action="store_true",
+                        help=("Optional flag indicating if console log output "
+                              "should be suppressed"))
+
+    parser.add_argument("--debug", required=False, action="store_true",
+                        help=("Optional flag indicating if debug level "
+                              "information should be displayed"))
+
+    return parser
+
+
+def _check_tracker(tracker_str: str) -> str:
+
+    if "http://" in tracker_str:
+        return tracker_str
+
+    return "http://" + tracker_str
+
+
 if __name__ == "__main__":
 
-    logs.setup()
+    ARGS: argparse.Namespace = _create_parser().parse_args()
 
-    TRACKER_URL: str = sys.argv[1]
+    if not ARGS.quiet:
+        logs.setup(debug=ARGS.debug)
 
-    TOPOLOGIES: pd.DataFrame = tracker.get_topologies(TRACKER_URL)
+    NO_CACHE_DIR: bool = False
+    if not os.path.exists(ARGS.cache_dir):
+        NO_CACHE_DIR = True
+        os.makedirs(ARGS.cache_dir)
+        LOG.info("Created cache directory at: %s", ARGS.cache_dir)
+
+    CREATE_TIME_FILE: str = os.path.join(ARGS.cache_dir, "created.pkl")
+    TOPO_FILE: str = os.path.join(ARGS.cache_dir, "topo.pkl")
+    TOPO_PPLAN_FILE: str = os.path.join(ARGS.cache_dir, "topo_pplan.pkl")
+    GROUPING_SUMMARY_FILE: str = os.path.join(ARGS.cache_dir,
+                                              "grouping_summary.pkl")
+
+    if ARGS.reload or NO_CACHE_DIR:
+
+        if not ARGS.tracker:
+            err_msg: str = ("In order to load information from the Tracker API"
+                            " the tracker URL must be supplied via the "
+                            "-t / --tracker argument")
+            if ARGS.quiet:
+                print(err_msg, file=sys.stderr)
+            else:
+                LOG.error(err_msg)
+            # Exit with error code 2 (usually means cli syntax error)
+            sys.exit(2)
+
+        TRACKER_URL: str = _check_tracker(ARGS.tracker)
+
+        LOG.info("Fetching new data from the Heron Tracker API at %s",
+                 TRACKER_URL)
+
+        # Get the list of topologies registered with the heron tracker
+        TOPOLOGIES: pd.DataFrame = tracker.get_topologies(TRACKER_URL)
+        LOG.info("Caching topology data at %s", TOPO_FILE)
+        TOPOLOGIES.to_pickle(TOPO_FILE)
+
+        # Add physical plan options
+        TOPO_PPLAN: pd.DataFrame = add_pplan_info(TRACKER_URL, TOPOLOGIES)
+        LOG.info("Caching topology physical plan data at %s",
+                 TOPO_PPLAN_FILE)
+        TOPO_PPLAN.to_pickle(TOPO_PPLAN_FILE)
+
+        # Get the stream grouping summary
+        GROUPING_SUMMARY: pd.DataFrame = summarise_groupings(TRACKER_URL,
+                                                             TOPOLOGIES)
+        LOG.info("Caching stream grouping summary data at %s",
+                 GROUPING_SUMMARY_FILE)
+        GROUPING_SUMMARY.to_pickle(GROUPING_SUMMARY_FILE)
+
+        # Save a time stamp so we know how old the data is
+        now: dt.datetime = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+
+        with open(CREATE_TIME_FILE, 'wb') as time_file:
+            pickle.dump(now, time_file)
+
+    else:
+
+        with open(CREATE_TIME_FILE, 'rb') as time_file:
+            timestamp: dt.datetime = pickle.load(time_file)
+
+        now = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+        duration: dt.timedelta = now - timestamp
+
+        LOG.info("Loading data that is %s hours old",
+                 str(round(duration.total_seconds() / 3600, 2)))
+
+        LOG.info("Loading topology data from %s", TOPO_FILE)
+        TOPOLOGIES = pd.read_pickle(TOPO_FILE)
+
+        LOG.info("Loading topology physical plan data from %s",
+                 TOPO_PPLAN_FILE)
+        TOPO_PPLAN = pd.read_pickle(TOPO_PPLAN_FILE)
+
+        LOG.info("Loading stream grouping summary data from %s",
+                 GROUPING_SUMMARY_FILE)
+        GROUPING_SUMMARY = pd.read_pickle(GROUPING_SUMMARY_FILE)
 
     # Overall topology counts
     TOTAL_TOPOS: int = TOPOLOGIES.topology.count()
@@ -115,9 +316,6 @@ if __name__ == "__main__":
                                    TOTAL_TOPOS) * 100)
     TOPOS_BY_ENV = TOPOS_BY_ENV.reset_index()
 
-    # Add config options
-    TOPO_PPLAN: pd.DataFrame = add_pplan_info(TRACKER_URL, TOPOLOGIES)
-
     MG_TOTAL_TOPOS: int = TOPO_PPLAN.reliability_mode.count()
 
     # Message Guarantee stats
@@ -132,44 +330,12 @@ if __name__ == "__main__":
                                 MG_TOTAL_TOPOS * 100)
 
     # By Cluster
-    MG_BY_CLUSTER: pd.DataFrame = pd.DataFrame(
-        TOPO_PPLAN.groupby(["cluster", "reliability_mode"]).topology.count())
-    MG_BY_CLUSTER = MG_BY_CLUSTER.reset_index()
-    MG_BY_CLUSTER.rename(index=str, columns={"topology": "mg_cluster_count"},
-                         inplace=True)
-    MG_BY_CLUSTER = MG_BY_CLUSTER.merge(
-        (MG_BY_CLUSTER.groupby("cluster").mg_cluster_count.sum()
-         .reset_index().rename(
-             index=str, columns={"mg_cluster_count": "mg_cluster_total"})),
-        on="cluster")
+    MG_BY_CLUSTER: pd.DataFrame = _get_mg_summary(TOPO_PPLAN, "cluster")
 
-    MG_BY_CLUSTER["overall_percentage"] = ((MG_BY_CLUSTER.mg_cluster_count /
-                                            MG_TOTAL_TOPOS) * 100)
-    MG_BY_CLUSTER["cluster_percentage"] = ((MG_BY_CLUSTER.mg_cluster_count /
-                                            MG_BY_CLUSTER.mg_cluster_total)
-                                           * 100)
     # By Environment
-    MG_BY_ENV: pd.DataFrame = pd.DataFrame(
-        TOPO_PPLAN.groupby(["environ", "reliability_mode"]).topology.count())
-    MG_BY_ENV = MG_BY_ENV.reset_index()
-    MG_BY_ENV.rename(index=str, columns={"topology": "mg_environ_count"},
-                     inplace=True)
-    MG_BY_ENV = MG_BY_ENV.merge(
-        (MG_BY_ENV.groupby("environ").mg_environ_count.sum()
-         .reset_index().rename(
-             index=str, columns={"mg_environ_count": "mg_environ_total"})),
-        on="environ")
-
-    MG_BY_ENV["overall_percentage"] = ((MG_BY_ENV.mg_environ_count /
-                                        MG_TOTAL_TOPOS) * 100)
-    MG_BY_ENV["environ_percentage"] = ((MG_BY_ENV.mg_environ_count /
-                                        MG_BY_ENV.mg_environ_total)
-                                       * 100)
+    MG_BY_ENV: pd.DataFrame = _get_mg_summary(TOPO_PPLAN, "environ")
 
     # Grouping stats
-    GROUPING_SUMMARY: pd.DataFrame = groupings.summarise(TRACKER_URL,
-                                                         TOPOLOGIES)
-
     JUST_GROUPINGS: pd.DataFrame = \
         (GROUPING_SUMMARY.drop(["topology", "cluster", "environ", "user"],
                                axis=1))
@@ -194,65 +360,83 @@ if __name__ == "__main__":
 
     PERCENTILES: List[float] = [.10, .25, .5, .75, .95, .99]
 
-    print("-------------------")
-    print("Heron Tracker Stats")
-    print("-------------------")
+    if ARGS.output:
+        LOG.info("Saving output to file: %s", ARGS.output)
+        OUT_FILE = open(ARGS.output, "w")
+    else:
+        LOG.info("Sending output to standard out")
+        OUT_FILE = sys.stdout
 
-    print(f"\nTotal topologies: {TOTAL_TOPOS}")
-    print("\nTotal topologies by cluster:\n")
-    print(TOPOS_BY_CLUSTER.to_string(index=False))
-    print("\nTotal topologies by environment:\n")
-    print(TOPOS_BY_ENV.to_string(index=False))
+    print("-------------------", file=OUT_FILE)
+    print("Heron Tracker Stats", file=OUT_FILE)
+    print("-------------------", file=OUT_FILE)
 
-    print("\n-------------------")
-    print("Container stats:\n")
+    print(f"\nTotal topologies: {TOTAL_TOPOS}", file=OUT_FILE)
+    print("\nTotal topologies by cluster:\n", file=OUT_FILE)
+    print(TOPOS_BY_CLUSTER.to_string(index=False), file=OUT_FILE)
+    print("\nTotal topologies by environment:\n", file=OUT_FILE)
+    print(TOPOS_BY_ENV.to_string(index=False), file=OUT_FILE)
 
-    print(TOPO_PPLAN.stmgrs.describe(percentiles=PERCENTILES).to_string())
+    print("\n-------------------", file=OUT_FILE)
+    print("Container stats:\n", file=OUT_FILE)
 
-    print("\nTop 10 Largest topologies by container count:\n")
+    print(TOPO_PPLAN.stmgrs.describe(percentiles=PERCENTILES).to_string(),
+          file=OUT_FILE)
+
+    print("\nTop 10 Largest topologies by container count:\n", file=OUT_FILE)
     print(TOPO_PPLAN.sort_values(by="stmgrs", ascending=False)
           [["topology", "cluster", "environ", "user", "stmgrs"]]
-          .head(10).to_string(index=False))
+          .head(10).to_string(index=False), file=OUT_FILE)
 
-    print("\n-------------------")
-    print("Instance stats:\n")
+    print("\n-------------------", file=OUT_FILE)
+    print("Instance stats:\n", file=OUT_FILE)
 
-    print("\nStatistics for total number of instance per topology:\n")
+    print("\nStatistics for total number of instance per topology:\n",
+          file=OUT_FILE)
     print(TOPO_PPLAN.total_instances.describe(
-        percentiles=PERCENTILES).to_string())
+        percentiles=PERCENTILES).to_string(), file=OUT_FILE)
 
-    print("\nTop 10 Largest topologies by instance count:\n")
+    print("\nTop 10 Largest topologies by instance count:\n", file=OUT_FILE)
     print(TOPO_PPLAN.sort_values(by="total_instances", ascending=False)
           [["topology", "cluster", "environ", "user", "total_instances"]]
-          .head(10).to_string(index=False))
+          .head(10).to_string(index=False), file=OUT_FILE)
 
-    print("\nStatistics for instances per container:\n")
+    print("\nStatistics for instances per container:\n", file=OUT_FILE)
     output: List[int] = []
     for index, dist in TOPO_PPLAN.instances_per_container_dist.iteritems():
         output.extend(dist)
-    print(pd.Series(output).describe(percentiles=PERCENTILES).to_string())
+    print(pd.Series(output).describe(percentiles=PERCENTILES).to_string(),
+          file=OUT_FILE)
 
-    print("\n-------------------")
-    print("Message guarantee stats:\n")
+    print("\n-------------------", file=OUT_FILE)
+    print("Message guarantee stats:\n", file=OUT_FILE)
 
-    print("\nTopologies with each message guarantee type - Overall\n")
-    print(MG_OVERALL.to_string())
+    print("\nTopologies with each message guarantee type - Overall\n",
+          file=OUT_FILE)
+    print(MG_OVERALL.to_string(), file=OUT_FILE)
 
-    print("\nTopologies with each message guarantee type by Cluster\n")
-    print(MG_BY_CLUSTER.set_index(["cluster", "reliability_mode"]).to_string())
+    print("\nTopologies with each message guarantee type by Cluster\n",
+          file=OUT_FILE)
+    print(MG_BY_CLUSTER.set_index(["cluster",
+                                   "reliability_mode"]).to_string(),
+          file=OUT_FILE)
 
-    print("\nTopologies with each message guarantee type by Environment\n")
-    print(MG_BY_ENV.set_index(["environ", "reliability_mode"]).to_string())
+    print("\nTopologies with each message guarantee type by Environment\n",
+          file=OUT_FILE)
+    print(MG_BY_ENV.set_index(["environ", "reliability_mode"]).to_string(),
+          file=OUT_FILE)
 
-    print("\n-------------------")
-    print("Stream grouping stats:\n")
+    print("\n-------------------", file=OUT_FILE)
+    print("Stream grouping stats:\n", file=OUT_FILE)
 
-    print("\nPercentage of topologies with each grouping - Overall:\n")
-    print(GROUPING_OVERALL.to_string())
+    print("\nPercentage of topologies with each grouping - Overall:\n",
+          file=OUT_FILE)
+    print(GROUPING_OVERALL.to_string(), file=OUT_FILE)
 
-    print("\nPercentage of topologies with each grouping - Per Environment:\n")
+    print("\nPercentage of topologies with each grouping - Per Environment:\n",
+          file=OUT_FILE)
     print(GROUPING_ENVIRON.drop(["topology", "cluster", "user"],
-                                axis=1).to_string())
+                                axis=1).to_string(), file=OUT_FILE)
 
-    print("\nTopologies with only a single grouping type:\n")
-    print(pd.DataFrame(SINGLE_GROUPING).to_string())
+    print("\nTopologies with only a single grouping type:\n", file=OUT_FILE)
+    print(pd.DataFrame(SINGLE_GROUPING).to_string(index=False), file=OUT_FILE)

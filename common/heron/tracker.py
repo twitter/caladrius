@@ -12,7 +12,8 @@ import pandas as pd
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-#pylint: disable=too-many-arguments
+# pylint: disable=too-many-arguments
+
 
 def get_topologies(tracker_url: str, cluster: str = None,
                    environ: str = None) -> pd.DataFrame:
@@ -42,8 +43,8 @@ def get_topologies(tracker_url: str, cluster: str = None,
     topo_url: str = tracker_url + "/topologies"
 
     response: requests.Response = requests.get(topo_url,
-                                               params={"cluster" : cluster,
-                                                       "environ" : environ})
+                                               params={"cluster": cluster,
+                                                       "environ": environ})
     try:
         response.raise_for_status()
     except requests.HTTPError as err:
@@ -61,17 +62,18 @@ def get_topologies(tracker_url: str, cluster: str = None,
             for environment, topology_list in user_dict.items():
                 for topology in topology_list:
                     row: Dict[str, str] = {
-                        "cluster" : cluster_name,
-                        "user" : user,
-                        "environ" : environment,
-                        "topology" : topology}
+                        "cluster": cluster_name,
+                        "user": user,
+                        "environ": environment,
+                        "topology": topology}
                     output.append(row)
 
     return pd.DataFrame(output)
 
+
 def get_logical_plan(tracker_url: str, cluster: str, environ: str,
                      topology: str) -> Dict[str, Any]:
-    """ Get the logical plan dictionary from the heron tracker api.
+    """ Get the logical plan dictionary from the heron tracker API.
 
     Arguments:
         tracker_url (str):  The base url string for the Heron Tracker instance.
@@ -93,9 +95,9 @@ def get_logical_plan(tracker_url: str, cluster: str, environ: str,
     logical_url: str = tracker_url + "/topologies/logicalplan"
 
     response: requests.Response = requests.get(logical_url,
-                                               params={"cluster" : cluster,
-                                                       "environ" : environ,
-                                                       "topology" : topology})
+                                               params={"cluster": cluster,
+                                                       "environ": environ,
+                                                       "topology": topology})
 
     try:
         response.raise_for_status()
@@ -107,9 +109,10 @@ def get_logical_plan(tracker_url: str, cluster: str, environ: str,
 
     return response.json()["result"]
 
+
 def get_physical_plan(tracker_url: str, cluster: str, environ: str,
                       topology: str) -> Dict[str, Any]:
-    """ Get the logical plan dictionary from the heron tracker api.
+    """ Get the logical plan dictionary from the heron tracker API.
 
     Arguments:
         tracker_url (str):  The base url string for the Heron Tracker instance.
@@ -131,9 +134,9 @@ def get_physical_plan(tracker_url: str, cluster: str, environ: str,
     physical_url: str = tracker_url + "/topologies/physicalplan"
 
     response: requests.Response = requests.get(physical_url,
-                                               params={"cluster" : cluster,
-                                                       "environ" : environ,
-                                                       "topology" : topology})
+                                               params={"cluster": cluster,
+                                                       "environ": environ,
+                                                       "topology": topology})
 
     try:
         response.raise_for_status()
@@ -144,6 +147,7 @@ def get_physical_plan(tracker_url: str, cluster: str, environ: str,
         raise err
 
     return response.json()["result"]
+
 
 def parse_instance_name(instance_name: str) -> Dict[str, Union[str, int]]:
     """ Parses the instance name string returned by the Heron Tracker API into
@@ -162,12 +166,13 @@ def parse_instance_name(instance_name: str) -> Dict[str, Union[str, int]]:
 
     parts: List[str] = instance_name.split("_")
 
-    return {"container" : int(parts[1]), "component" : parts[2],
-            "task_id" : int(parts[3])}
+    return {"container": int(parts[1]), "component": parts[2],
+            "task_id": int(parts[3])}
+
 
 def get_topology_info(tracker_url: str, cluster: str, environ: str,
                       topology: str) -> Dict[str, Union[int, str]]:
-    """ Get the information dictionary from the heron tracker api. This
+    """ Get the information dictionary from the heron tracker API. This
     contains the logical and physical plans as well as other information on the
     topology.
 
@@ -189,9 +194,9 @@ def get_topology_info(tracker_url: str, cluster: str, environ: str,
     info_url: str = tracker_url + "/topologies/info"
 
     response: requests.Response = requests.get(info_url,
-                                               params={"cluster" : cluster,
-                                                       "environ" : environ,
-                                                       "topology" : topology})
+                                               params={"cluster": cluster,
+                                                       "environ": environ,
+                                                       "topology": topology})
 
     response.raise_for_status()
 
@@ -199,9 +204,10 @@ def get_topology_info(tracker_url: str, cluster: str, environ: str,
 
     return response.json()["result"]
 
+
 def get_metrics(tracker_url: str, cluster: str, environ: str, topology: str,
                 component: str, interval: int, metrics: Union[str, List[str]]
-               ) -> Dict[str, Any]:
+                ) -> Dict[str, Any]:
     """ Gets aggregated metrics for the specified component in the specified
     topology. Metrics are aggregated over the supplied interval.
 
@@ -226,8 +232,8 @@ def get_metrics(tracker_url: str, cluster: str, environ: str, topology: str,
     """
 
     payload: Dict[str, Union[str, List[str], int]] = {
-        "cluster" : cluster, "environ" : environ, "topology" : topology,
-        "component" : component, "interval" : interval, "metricname" : metrics}
+        "cluster": cluster, "environ": environ, "topology": topology,
+        "component": component, "interval": interval, "metricname": metrics}
 
     metrics_url: str = tracker_url + "/topologies/metrics"
 
@@ -240,10 +246,11 @@ def get_metrics(tracker_url: str, cluster: str, environ: str, topology: str,
 
     return response.json()["result"]
 
+
 def get_metrics_timeline(tracker_url: str, cluster: str, environ: str,
                          topology: str, component: str, start_time: int,
                          end_time: int, metrics: Union[str, List[str]]
-                        ) -> Dict[str, Any]:
+                         ) -> Dict[str, Any]:
     """ Gets metrics timelines for the specified component in the specified
     topology. Metrics are aggregated into one minuet intervals keyed by POSIX
     UTC timestamps (in seconds) for the start of each interval.
@@ -278,9 +285,9 @@ def get_metrics_timeline(tracker_url: str, cluster: str, environ: str,
                     "by the Topology Master", str(metrics), topology)
 
     payload: Dict[str, Union[str, List[str], int]] = {
-        "cluster" : cluster, "environ" : environ, "topology" : topology,
-        "component" : component, "starttime" : start_time,
-        "endtime" : end_time, "metricname" : metrics}
+        "cluster": cluster, "environ": environ, "topology": topology,
+        "component": component, "starttime": start_time,
+        "endtime": end_time, "metricname": metrics}
 
     metrics_timeline_url: str = tracker_url + "/topologies/metricstimeline"
 
@@ -292,6 +299,7 @@ def get_metrics_timeline(tracker_url: str, cluster: str, environ: str,
              "period of %d seconds", str(metrics), topology, duration)
 
     return response.json()["result"]
+
 
 def issue_metrics_query(tracker_url: str, cluster: str, environ: str,
                         topology: str, start_time: int, end_time: int,
@@ -329,8 +337,8 @@ def issue_metrics_query(tracker_url: str, cluster: str, environ: str,
                     " data stored by the Topology Master", query, topology)
 
     payload: Dict[str, Union[str, int]] = {
-        "cluster" : cluster, "environ" : environ, "topology" : topology,
-        "starttime" : start_time, "endtime" : end_time, "query" : query}
+        "cluster": cluster, "environ": environ, "topology": topology,
+        "starttime": start_time, "endtime": end_time, "query": query}
 
     metrics_query_url: str = tracker_url + "/topologies/metricsquery"
 
@@ -342,6 +350,7 @@ def issue_metrics_query(tracker_url: str, cluster: str, environ: str,
              "period of %d seconds", query, topology, duration)
 
     return response.json()["result"]
+
 
 def get_incoming_streams(logical_plan: Dict[str, Any],
                          component_name: str) -> List[str]:
@@ -362,9 +371,10 @@ def get_incoming_streams(logical_plan: Dict[str, Any],
             for input_stream
             in logical_plan["bolts"][component_name]["inputs"]]
 
+
 def incoming_sources_and_streams(logical_plan: Dict[str, Any],
                                  component_name: str
-                                ) -> List[Tuple[str, str]]:
+                                 ) -> List[Tuple[str, str]]:
     """ Gets a list of (source component, input stream name) tuples for the
     supplied component in the supplied logical plan.
 
@@ -382,6 +392,7 @@ def incoming_sources_and_streams(logical_plan: Dict[str, Any],
     return [(input_stream["component_name"], input_stream["stream_name"])
             for input_stream
             in logical_plan["bolts"][component_name]["inputs"]]
+
 
 def get_outgoing_streams(logical_plan: Dict[str, Any],
                          component_name: str) -> List[str]:
@@ -407,6 +418,7 @@ def get_outgoing_streams(logical_plan: Dict[str, Any],
     return [output_stream["stream_name"]
             for output_stream
             in logical_plan[comp_type][component_name]["outputs"]]
+
 
 def get_component_task_ids(tracker_url: str, cluster: str, environ: str,
                            topology: str) -> Dict[str, List[int]]:

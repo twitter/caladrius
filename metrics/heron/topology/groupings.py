@@ -5,13 +5,10 @@ import logging
 from typing import Set, Tuple, Dict, Any, DefaultDict
 from collections import defaultdict
 
-import pandas as pd
-
-from requests import HTTPError
-
-from common.heron import tracker
+from caladrius.common.heron import tracker
 
 LOG: logging.Logger = logging.getLogger(__name__)
+
 
 def summary(tracker_url: str, topology_id: str, cluster: str,
             environ: str) -> Dict[str, int]:
@@ -55,49 +52,6 @@ def summary(tracker_url: str, topology_id: str, cluster: str,
 
     return dict(grouping_counts)
 
-def summarise(tracker_url: str) -> pd.DataFrame:
-    """ Summarises the stream grouping counts of all topologies registered with
-    the supplied Tracker instance.
-
-    Arguments:
-        tracker_url (str):  The URL for the Heron Tracker API
-
-    Returns:
-        A DataFrame with columns for:
-        topology: The topology ID
-        cluster: The cluster the topology is running on
-        environ: The environment the topology is running in
-        user: The user that uploaded the topology
-        A column for each type of stream grouping as well as combinations of
-        stream grouping (incoming grouping)->(outgoing grouping) and their
-        associate frequency count for each topology.
-    """
-    topologies: pd.DataFrame = tracker.get_topologies(tracker_url)
-
-    output: pd.DataFrame = None
-
-    for (cluster, environ), data in topologies.groupby(["cluster", "environ"]):
-        for topology in data.topology:
-
-            try:
-                grouping_summary: Dict[str, int] = \
-                    summary(tracker_url, topology, cluster, environ)
-            except HTTPError:
-                LOG.warning("Unable to fetch grouping summary for topology: "
-                            "%s, cluster: %s, environ: %s", topology, cluster,
-                            environ)
-            else:
-                grouping_summary["topology"] = topology
-                grouping_df: pd.DataFrame = pd.DataFrame([grouping_summary])
-
-                if output is None:
-                    output = grouping_df
-                else:
-                    output = output.append(grouping_df)
-
-    output = output.merge(topologies, on="topology")
-
-    return output
 
 def has_fields_fields(tracker_url: str, topology_id: str, cluster: str,
                       environ: str) -> bool:
