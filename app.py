@@ -14,12 +14,12 @@ from caladrius.api.router import create_router
 
 LOG: logging.Logger = logging.getLogger("caladrius.main")
 
-def create_parser() -> argparse.ArgumentParser:
+
+def _create_parser() -> argparse.ArgumentParser:
 
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         description=("This is the command line interface for the Caladrius API"
                      " server"))
-
 
     parser.add_argument("-c", "--config", required=True,
                         help=("Path to the config file with data required by "
@@ -33,9 +33,10 @@ def create_parser() -> argparse.ArgumentParser:
 
     return parser
 
+
 if __name__ == "__main__":
 
-    ARGS: argparse.Namespace = create_parser().parse_args()
+    ARGS: argparse.Namespace = _create_parser().parse_args()
 
     try:
         CONFIG: Dict[str, Any] = loader.load_config(ARGS.config)

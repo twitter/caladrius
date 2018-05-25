@@ -385,21 +385,22 @@ if __name__ == "__main__":
 
     print("\nTop 10 Largest topologies by container count:\n", file=OUT_FILE)
     print(TOPO_PPLAN.sort_values(by="stmgrs", ascending=False)
-          [["topology", "cluster", "environ", "user", "stmgrs"]]
+          [["topology", "cluster", "environ", "user", "total_instances",
+            "stmgrs"]]
           .head(10).to_string(index=False), file=OUT_FILE)
 
     print("\n-------------------", file=OUT_FILE)
     print("Instance stats:\n", file=OUT_FILE)
 
-    print("\nStatistics for total number of instance per topology:\n",
+    print("\nStatistics for total number of instances per topology:\n",
           file=OUT_FILE)
     print(TOPO_PPLAN.total_instances.describe(
         percentiles=PERCENTILES).to_string(), file=OUT_FILE)
 
     print("\nTop 10 Largest topologies by instance count:\n", file=OUT_FILE)
     print(TOPO_PPLAN.sort_values(by="total_instances", ascending=False)
-          [["topology", "cluster", "environ", "user", "total_instances"]]
-          .head(10).to_string(index=False), file=OUT_FILE)
+          [["topology", "cluster", "environ", "user", "total_instances",
+            "stmgrs"]].head(10).to_string(index=False), file=OUT_FILE)
 
     print("\nStatistics for instances per container:\n", file=OUT_FILE)
     output: List[int] = []
