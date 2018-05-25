@@ -6,7 +6,7 @@ import warnings
 
 import datetime as dt
 
-from typing import Dict, List, Any, Callable, Union, Tuple, cast
+from typing import Dict, List, Any, Callable, Union, Tuple, cast, Optional
 
 import pandas as pd
 
@@ -22,6 +22,9 @@ LOG: logging.Logger = logging.getLogger(__name__)
 
 # Type definitions
 ROW_DICT = Dict[str, Union[str, int, float, dt.datetime, None]]
+
+# The TMaster metrics are aggregated into minute long periods by default
+DEFAULT_METRIC_PERIOD: int = 60
 
 
 def time_check(start: dt.datetime, end: dt.datetime,
@@ -75,7 +78,7 @@ def time_check(start: dt.datetime, end: dt.datetime,
 
 
 def instance_timelines_to_dataframe(
-        instance_timelines: dict, stream: str, measurement_name: str,
+        instance_timelines: dict, stream: Optional[str], measurement_name: str,
         conversion_func: Callable[[str], Union[str, int, float]] = None,
         source_component: str = None) -> pd.DataFrame:
     """ Converts the timeline dictionaries of a *single metric* into a single
@@ -131,8 +134,10 @@ def instance_timelines_to_dataframe(
                 "container": details["container"],
                 "task": details["task_id"],
                 "component": details["component"],
-                "stream": stream,
                 measurement_name: measurement}
+
+            if stream:
+                row["stream"] = stream
 
             if source_component:
                 row["source_component"] = source_component
@@ -183,6 +188,31 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return False
 
+    def _query_setup(self, topology_id: str, start: dt.datetime,
+                     end: dt.datetime, **kwargs: Union[str, int, float]
+                     ) -> Tuple[str, str, Dict[str, Any], int, int]:
+        """ Helper method for setting up each of the query methods with the
+        required variables."""
+
+        try:
+            cluster: str = cast(str, kwargs["cluster"])
+            environ: str = cast(str, kwargs["environ"])
+        except KeyError as kerr:
+            ke_msg: str = (f"Keyword argument: {kerr.args[0]} should be "
+                           f"supplied.")
+            LOG.error(ke_msg)
+            raise RuntimeError(ke_msg)
+
+        time_check(start, end, self.time_limit_hrs)
+
+        start_time: int = int(round(start.timestamp()))
+        end_time: int = int(round(end.timestamp()))
+
+        logical_plan: Dict[str, Any] = tracker.get_logical_plan(
+            self.tracker_url, cluster, environ, topology_id)
+
+        return cluster, environ, logical_plan, start_time, end_time
+
     def get_component_service_times(self, topology_id: str, cluster: str,
                                     environ: str, component_name: str,
                                     start: int, end: int, logical_plan:
@@ -228,9 +258,7 @@ class HeronTMasterClient(HeronMetricsClient):
         """
 
         LOG.info("Getting service time metrics for component %s of topology "
-                 "%s between %s and %s", component_name, topology_id,
-                 dt.datetime.utcfromtimestamp(start).isoformat(),
-                 dt.datetime.utcfromtimestamp(end).isoformat())
+                 "%s", component_name, topology_id)
 
         if not logical_plan:
             LOG.debug("Logical plan not supplied, fetching from Heron Tracker")
@@ -299,22 +327,14 @@ class HeronTMasterClient(HeronMetricsClient):
             * latency_ms: The average execute latency measurement in
               milliseconds for that metric time period.
         """
-        try:
-            cluster: str = cast(str, kwargs["cluster"])
-            environ: str = cast(str, kwargs["environ"])
-        except KeyError as kerr:
-            ke_msg: str = (f"Keyword argument: {kerr.args[0]} should be "
-                           f"supplied.")
-            LOG.error(ke_msg)
-            raise RuntimeError(ke_msg)
 
-        logical_plan: Dict[str, Any] = tracker.get_logical_plan(
-            self.tracker_url, cluster, environ, topology_id)
+        LOG.info("Getting service times for topology %s over a %d second "
+                 "period from %s to %s", topology_id,
+                 (end-start).total_seconds(), start.isoformat(),
+                 end.isoformat())
 
-        time_check(start, end, self.time_limit_hrs)
-
-        start_time: int = int(round(start.timestamp()))
-        end_time: int = int(round(end.timestamp()))
+        cluster, environ, logical_plan, start_time, end_time = \
+            self._query_setup(topology_id, start, end, **kwargs)
 
         output: pd.DataFrame = None
 
@@ -385,10 +405,8 @@ class HeronTMasterClient(HeronMetricsClient):
             * emit_count: The emit count in that metric time period.
         """
 
-        LOG.info("Getting emission metrics for component %s of topology "
-                 "%s between %s and %s", component_name, topology_id,
-                 dt.datetime.utcfromtimestamp(start).isoformat(),
-                 dt.datetime.utcfromtimestamp(end).isoformat())
+        LOG.info("Getting emit count metrics for component %s of topology "
+                 "%s", component_name, topology_id)
 
         if not logical_plan:
             LOG.debug("Logical plan not supplied, fetching from Heron Tracker")
@@ -441,7 +459,7 @@ class HeronTMasterClient(HeronMetricsClient):
                               prod, devel, test, etc).
 
         Returns:
-            pandas.DataFrame:   A DataFrame containing the service time
+            pandas.DataFrame:   A DataFrame containing the emit count
             measurements as a timeseries. Each row represents a measurement
             (aggregated over one minute) with the following columns:
 
@@ -454,27 +472,18 @@ class HeronTMasterClient(HeronMetricsClient):
               lead to this metric came from,
             * emit_count: The emit count during the metric time period.
         """
-        try:
-            cluster: str = cast(str, kwargs["cluster"])
-            environ: str = cast(str, kwargs["environ"])
-        except KeyError as kerr:
-            ke_msg: str = (f"Keyword argument: {kerr.args[0]} should be "
-                           f"supplied.")
-            LOG.error(ke_msg)
-            raise RuntimeError(ke_msg)
+        LOG.info("Getting emit counts for topology %s over a %d second "
+                 "period from %s to %s", topology_id,
+                 (end-start).total_seconds(), start.isoformat(),
+                 end.isoformat())
 
-        logical_plan: Dict[str, Any] = tracker.get_logical_plan(
-            self.tracker_url, cluster, environ, topology_id)
+        cluster, environ, logical_plan, start_time, end_time = \
+            self._query_setup(topology_id, start, end, **kwargs)
 
         output: pd.DataFrame = None
 
         components: List[str] = (list(logical_plan["spouts"].keys()) +
                                  list(logical_plan["bolts"].keys()))
-
-        time_check(start, end, self.time_limit_hrs)
-
-        start_time: int = int(round(start.timestamp()))
-        end_time: int = int(round(end.timestamp()))
 
         for component in components:
 
@@ -540,9 +549,7 @@ class HeronTMasterClient(HeronMetricsClient):
         """
 
         LOG.info("Getting execute count metrics for component %s of topology "
-                 "%s between %s and %s", component_name, topology_id,
-                 dt.datetime.utcfromtimestamp(start).isoformat(),
-                 dt.datetime.utcfromtimestamp(end).isoformat())
+                 "%s", component_name, topology_id)
 
         if not logical_plan:
             LOG.debug("Logical plan not supplied, fetching from Heron Tracker")
@@ -612,22 +619,13 @@ class HeronTMasterClient(HeronMetricsClient):
               instance belongs to,
             * execute_count: The execute count during the metric time period.
         """
-        try:
-            cluster: str = cast(str, kwargs["cluster"])
-            environ: str = cast(str, kwargs["environ"])
-        except KeyError as kerr:
-            ke_msg: str = (f"Keyword argument: {kerr.args[0]} should be "
-                           f"supplied.")
-            LOG.error(ke_msg)
-            raise RuntimeError(ke_msg)
+        LOG.info("Getting execute counts for topology %s over a %d second "
+                 "period from %s to %s", topology_id,
+                 (end-start).total_seconds(), start.isoformat(),
+                 end.isoformat())
 
-        logical_plan: Dict[str, Any] = tracker.get_logical_plan(
-            self.tracker_url, cluster, environ, topology_id)
-
-        time_check(start, end, self.time_limit_hrs)
-
-        start_time: int = int(round(start.timestamp()))
-        end_time: int = int(round(end.timestamp()))
+        cluster, environ, logical_plan, start_time, end_time = \
+            self._query_setup(topology_id, start, end, **kwargs)
 
         output: pd.DataFrame = None
 
@@ -697,9 +695,7 @@ class HeronTMasterClient(HeronMetricsClient):
         """
 
         LOG.info("Getting complete latency metrics for component %s of "
-                 "topology %s between %s and %s", component_name, topology_id,
-                 dt.datetime.utcfromtimestamp(start).isoformat(),
-                 dt.datetime.utcfromtimestamp(end).isoformat())
+                 "topology %s", component_name, topology_id)
 
         if not logical_plan:
             LOG.debug("Logical plan not supplied, fetching from Heron Tracker")
@@ -774,14 +770,13 @@ class HeronTMasterClient(HeronMetricsClient):
             RuntimeWarning: If the specified topology has a reliability mode
                             that does not enable complete latency.
         """
-        try:
-            cluster: str = cast(str, kwargs["cluster"])
-            environ: str = cast(str, kwargs["environ"])
-        except KeyError as kerr:
-            ke_msg: str = (f"Keyword argument: {kerr.args[0]} should be "
-                           f"supplied.")
-            LOG.error(ke_msg)
-            raise KeyError(ke_msg)
+        LOG.info("Getting complete latencies for topology %s over a %d second "
+                 "period from %s to %s", topology_id,
+                 (end-start).total_seconds(), start.isoformat(),
+                 end.isoformat())
+
+        cluster, environ, logical_plan, start_time, end_time = \
+            self._query_setup(topology_id, start, end, **kwargs)
 
         # First we need to check that the supplied topology will actually have
         # complete latencies. Only ATLEAST_ONCE and EXACTLY_ONCE will have
@@ -796,14 +791,6 @@ class HeronTMasterClient(HeronMetricsClient):
             LOG.warning(rm_msg)
             warnings.warn(rm_msg, RuntimeWarning)
             return pd.DataFrame()
-
-        logical_plan: Dict[str, Any] = tracker.get_logical_plan(
-            self.tracker_url, cluster, environ, topology_id)
-
-        time_check(start, end, self.time_limit_hrs)
-
-        start_time: int = int(round(start.timestamp()))
-        end_time: int = int(round(end.timestamp()))
 
         output: pd.DataFrame = None
 
@@ -827,6 +814,142 @@ class HeronTMasterClient(HeronMetricsClient):
             else:
                 output = output.append(spout_complete_latencies,
                                        ignore_index=True)
+
+        return output
+
+    def get_component_arrival_counts(self, topology_id: str, cluster: str,
+                                     environ: str, component_name: str,
+                                     start: int, end: int,
+                                     ) -> pd.DataFrame:
+        """ Gets the arrival counts, as a timeseries, for every instance of the
+        specified component of the specified topology. The start and end times
+        define the window over which to gather the metrics. The window duration
+        should be less then 3 hours as this is the limit of what the Topology
+        master stores.
+
+        Arguments:
+            topology_id (str):    The topology identification string.
+            cluster (str):  The cluster the topology is running in.
+            environ (str):  The environment the topology is running in (eg.
+                            prod, devel, test, etc).
+            component_name (str):   The name of the component whose metrics are
+                                    required.
+            start (int):    Start time for the time period the query is run
+                            against. This should be a UTC POSIX time integer
+                            (seconds since epoch).
+            end (int):  End time for the time period the query is run against.
+                        This should be a UTC POSIX time integer (seconds since
+                        epoch).
+
+        Returns:
+            pandas.DataFrame: A DataFrame containing the emit count
+            measurements as a timeseries. Each row represents a measurement
+            (aggregated over one minute) with the following columns:
+
+            * timestamp:The UTC timestamp for the metric time period,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from,
+            * stream: The name of the incoming stream from which the tuples
+              that lead to this metric came from,
+            * arrival_count: The arrival count in that metric time period.
+        """
+
+        LOG.info("Getting arrival count metrics for component %s of topology "
+                 "%s", component_name, topology_id)
+
+        metrics: List[str] = ["__gateway-received-packets-count"]
+
+        results: Dict[str, Any] = tracker.get_metrics_timeline(
+            self.tracker_url, cluster, environ, topology_id, component_name,
+            start, end, metrics)
+
+        output: pd.DataFrame = None
+
+        for stream_metric, instance_timelines in results["timeline"].items():
+
+            instance_tls_df: pd.DataFrame = instance_timelines_to_dataframe(
+                instance_timelines, None, "arrival_count",
+                lambda m: int(m))
+
+            if output is None:
+                output = instance_tls_df
+            else:
+                output = output.append(instance_tls_df, ignore_index=True)
+
+        return output
+
+    def get_arrival_rates(self, topology_id: str, start: dt.datetime,
+                          end: dt.datetime,
+                          **kwargs: Union[str, int, float]) -> pd.DataFrame:
+        """ Gets the arrival rates, as a timeseries, for every instance of each
+        of the bolt components of the specified topology. The start and end
+        times define the window over which to gather the metrics. The window
+        duration should be less than 3 hours as this is the limit of what the
+        Topology master stores.
+
+        Arguments:
+            topology_id (str):    The topology identification string.
+            start (datetime):    utc datetime instance for the start of the
+                                    metrics gathering period.
+            end (datetime):  utc datetime instance for the end of the
+                                metrics gathering period.
+            **cluster (str):  The cluster the topology is running in.
+            **environ (str):  The environment the topology is running in (eg.
+                              prod, devel, test, etc).
+
+        Returns:
+            pandas.DataFrame:   A DataFrame containing the arrival rate
+            measurements as a timeseries. Each row represents a measurement
+            (aggregated over one minute) with the following columns:
+
+            * timestamp: The UTC timestamp for the metric,
+            * component: The component this metric comes from,
+            * task: The instance ID number for the instance that the metric
+              comes from,
+            * container: The ID for the container this metric comes from,
+            * stream: The name of the outing stream from which the tuples that
+              lead to this metric came from,
+            * arrival_rate_tps: The arrival rate in units of tuples per second.
+        """
+        LOG.info("Getting arrival rates for topology %s over a %d second "
+                 "period from %s to %s", topology_id,
+                 (end-start).total_seconds(), start.isoformat(),
+                 end.isoformat())
+
+        cluster, environ, logical_plan, start_time, end_time = \
+            self._query_setup(topology_id, start, end, **kwargs)
+
+        output: pd.DataFrame = None
+
+        for component in logical_plan["bolts"]:
+
+            try:
+                comp_emit_counts: pd.DataFrame = \
+                        self.get_component_arrival_counts(
+                            topology_id, cluster, environ, component,
+                            start_time, end_time)
+            except HTTPError as http_error:
+                LOG.warning("Fetching arrival counts for component %s failed "
+                            "with status code %s", component,
+                            str(http_error.response.status_code))
+
+            if output is None:
+                output = comp_emit_counts
+            else:
+                output = output.append(comp_emit_counts, ignore_index=True)
+
+        if not output:
+            no_metric_err: str = \
+                ("Arrival rate metrics are not available. These are "
+                 "calculated from the '__gateway-received-packets-count' "
+                 "metric which is not recorded by default in the TMaster. "
+                 "To activate recording of this metric add it to the "
+                 "'tmaster-metrics-type:' list in the metrics-sinks.yaml "
+                 "configuration file.")
+            LOG.error(no_metric_err)
+            raise RuntimeError(no_metric_err)
 
         return output
 

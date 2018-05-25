@@ -295,8 +295,9 @@ def get_metrics_timeline(tracker_url: str, cluster: str, environ: str,
                                                params=payload)
     response.raise_for_status()
 
-    LOG.info("Fetched timeline(s) for metric(s): %s from topology: %s over a "
-             "period of %d seconds", str(metrics), topology, duration)
+    LOG.info("Fetched timeline(s) for metric(s): %s of component: %s from "
+             "topology: %s over a period of %d seconds", str(metrics),
+             component, topology, duration)
 
     return response.json()["result"]
 
