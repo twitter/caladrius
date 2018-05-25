@@ -1,0 +1,48 @@
+## CALADRIUS CONFIG ##
+
+log.file.dir: "/tmp/caladrius/logs"
+
+## GRAPH CONFIG ##
+
+graph.client: 'caladrius.graph.gremlin.client.GremlinClient'
+
+graph.client.config:
+    gremlin.server.url : "localhost:8182"
+
+## HERON CONFIG ##
+
+# The metrics client to use for Heron topologies
+heron.metrics.client: 'caladrius.metrics.heron.myclient.client.MyMetricsClient'
+
+heron.metrics.client.config:
+    myclient.database.url: "https://my-metrics-database.com"
+    myclient.client.name: "MyClient-Name"
+
+heron.tracker.url: "http://heron-tracker.com"
+
+# Each of these models is run when the model/traffic/heron endpoint is called
+heron.traffic.models:
+    - "caladrius.model.traffic.heron.stats_summary.StatsSummaryTrafficModel"
+
+# This map is passed to all Traffic models at start up
+heron.traffic.models.config:
+    stats.summary.model.default.source.hours: 24
+    stats.summary.model.quantiles:
+        - 10
+        - 90
+        - 95
+        - 99
+    heron.statemgr.connection.string: 'connect.to.zookeeper:2181'
+    heron.statemgr.root.path: 'tree/storm/heron/states'
+    zk.time.offset: -5
+
+heron.topology.models:
+    - "caladrius.model.topology.heron.queueing_theory.QTTopologyModel"
+
+# This map is passed to all Topology models at start up
+heron.topology.models.config:
+    heron.statemgr.connection.string: 'connect.to.zookeeper:2181'
+    heron.statemgr.root.path: 'tree/storm/heron/states'
+    zk.time.offset: -5
+    metric.bucket.length: 120
+    heron.tracker.url: "http://heron-tracker.com"
