@@ -3,6 +3,7 @@ used throughout caladrius."""
 
 from enum import Enum
 
+
 class ConfKeys(Enum):
     """ Main enum class containing configuration keys for caladrius"""
 
@@ -10,6 +11,3 @@ class ConfKeys(Enum):
     HERON_TMASTER_METRICS_MAX_HOURS: str = "heron.tmaster.metrics.max.hours"
 
     GREMLIN_SERVER_URL: str = "gremlin.server.url"
-
-    CUCKOO_SERVER_URL: str = "cuckoo.database.url"
-    CUCKOO_CLIENT_NAME: str = "cuckoo.client.name"
