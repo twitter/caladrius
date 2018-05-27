@@ -166,8 +166,13 @@ def parse_instance_name(instance_name: str) -> Dict[str, Union[str, int]]:
 
     parts: List[str] = instance_name.split("_")
 
-    return {"container": int(parts[1]), "component": parts[2],
-            "task_id": int(parts[3])}
+    if len(parts) == 4:
+        component: str = parts[2]
+    elif len(parts) > 4:
+        component = "_".join(parts[2:-2])
+
+    return {"container": int(parts[1]), "component": component,
+            "task_id": int(parts[-1])}
 
 
 def get_topology_info(tracker_url: str, cluster: str, environ: str,

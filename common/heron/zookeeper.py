@@ -13,7 +13,7 @@ import requests
 LOG: logging.Logger = logging.getLogger(__name__)
 
 TOPO_UPDATED_SEARCH_STR: str = \
-    (r"ctime</td><td>(?P<date>\w+ \d+, \d+ \d+:\d+ \w.\w.) "
+    (r"ctime</td><td>(?P<date>\w+.? \d+, \d+ \d+:\d+ \w.\w.) "
      r"\(((?P<months>\d+)\s?months?,?)?\s?"
      r"((?P<weeks>\d+)\s?weeks?,?)?\s?"
      r"((?P<days>\d+)\s?days?,?)?\s?"
@@ -22,10 +22,12 @@ TOPO_UPDATED_SEARCH_STR: str = \
      r"\sago\)")
 
 DATE_FORMAT: str = "%B %d, %Y %I:%M %p"
+OLD_DATE_FORMAT: str = "%b %d, %Y %I:%M %p"
+
 
 def last_topo_update_ts(zk_connection: str, zk_root_node: str,
                         topology_id: str, zk_time_offset: int = 0
-                       ) -> dt.datetime:
+                        ) -> dt.datetime:
     """ This method will attempt to obtain a timestamp of the most recent
     physical plan uploaded to the zookeeper cluster. To do this it simply
     parses the HTML returned by a GET request to pplan node for the specified
@@ -65,12 +67,17 @@ def last_topo_update_ts(zk_connection: str, zk_root_node: str,
         err_msg: str = (f"Could not obtain physical plan update timestamp "
                         f"from zookeeper node at: {zk_str}")
         LOG.error(err_msg)
+        LOG.debug("Text returned from Zookeeper node page: %s", response.text)
         raise RuntimeError(err_msg)
 
     time_dict: Dict[str, str] = result.groupdict()
 
-    last_updated: dt.datetime = \
-        dt.datetime.strptime(time_dict["date"].replace(".", ""), DATE_FORMAT)
+    time_str: str = time_dict["date"].replace(".", "")
+
+    try:
+        last_updated: dt.datetime = dt.datetime.strptime(time_str, DATE_FORMAT)
+    except ValueError:
+        last_updated = dt.datetime.strptime(time_str, OLD_DATE_FORMAT)
 
     zk_tz: dt.timezone = dt.timezone(dt.timedelta(hours=zk_time_offset))
 

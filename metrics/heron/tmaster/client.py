@@ -188,20 +188,11 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return False
 
-    def _query_setup(self, topology_id: str, start: dt.datetime,
-                     end: dt.datetime, **kwargs: Union[str, int, float]
-                     ) -> Tuple[str, str, Dict[str, Any], int, int]:
+    def _query_setup(self, topology_id: str, cluster: str, environ: str,
+                     start: dt.datetime, end: dt.datetime,
+                     ) -> Tuple[Dict[str, Any], int, int]:
         """ Helper method for setting up each of the query methods with the
         required variables."""
-
-        try:
-            cluster: str = cast(str, kwargs["cluster"])
-            environ: str = cast(str, kwargs["environ"])
-        except KeyError as kerr:
-            ke_msg: str = (f"Keyword argument: {kerr.args[0]} should be "
-                           f"supplied.")
-            LOG.error(ke_msg)
-            raise RuntimeError(ke_msg)
 
         time_check(start, end, self.time_limit_hrs)
 
@@ -211,7 +202,7 @@ class HeronTMasterClient(HeronMetricsClient):
         logical_plan: Dict[str, Any] = tracker.get_logical_plan(
             self.tracker_url, cluster, environ, topology_id)
 
-        return cluster, environ, logical_plan, start_time, end_time
+        return logical_plan, start_time, end_time
 
     def get_component_service_times(self, topology_id: str, cluster: str,
                                     environ: str, component_name: str,
@@ -293,8 +284,8 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return output
 
-    def get_service_times(self, topology_id: str, start: dt.datetime,
-                          end: dt.datetime,
+    def get_service_times(self, topology_id: str, cluster: str, environ: str,
+                          start: dt.datetime, end: dt.datetime,
                           **kwargs: Union[str, int, float]) -> pd.DataFrame:
         """ Gets the service times, as a timeseries, for every instance of the
         of all the bolt components of the specified topology. The start and end
@@ -333,8 +324,8 @@ class HeronTMasterClient(HeronMetricsClient):
                  (end-start).total_seconds(), start.isoformat(),
                  end.isoformat())
 
-        cluster, environ, logical_plan, start_time, end_time = \
-            self._query_setup(topology_id, start, end, **kwargs)
+        logical_plan, start_time, end_time = self._query_setup(
+            topology_id, cluster, environ, start, end)
 
         output: pd.DataFrame = None
 
@@ -439,8 +430,8 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return output
 
-    def get_emit_counts(self, topology_id: str, start: dt.datetime,
-                        end: dt.datetime,
+    def get_emit_counts(self, topology_id: str, cluster: str, environ: str,
+                        start: dt.datetime, end: dt.datetime,
                         **kwargs: Union[str, int, float]) -> pd.DataFrame:
         """ Gets the emit counts, as a timeseries, for every instance of each
         of the components of the specified topology. The start and end times
@@ -477,8 +468,8 @@ class HeronTMasterClient(HeronMetricsClient):
                  (end-start).total_seconds(), start.isoformat(),
                  end.isoformat())
 
-        cluster, environ, logical_plan, start_time, end_time = \
-            self._query_setup(topology_id, start, end, **kwargs)
+        logical_plan, start_time, end_time = self._query_setup(
+            topology_id, cluster, environ, start, end)
 
         output: pd.DataFrame = None
 
@@ -584,8 +575,8 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return output
 
-    def get_execute_counts(self, topology_id: str, start: dt.datetime,
-                           end: dt.datetime,
+    def get_execute_counts(self, topology_id: str, cluster: str, environ: str,
+                           start: dt.datetime, end: dt.datetime,
                            **kwargs: Union[str, int, float]) -> pd.DataFrame:
         """ Gets the execute counts, as a timeseries, for every instance of
         each of the components of the specified topology. The start and end
@@ -624,8 +615,8 @@ class HeronTMasterClient(HeronMetricsClient):
                  (end-start).total_seconds(), start.isoformat(),
                  end.isoformat())
 
-        cluster, environ, logical_plan, start_time, end_time = \
-            self._query_setup(topology_id, start, end, **kwargs)
+        logical_plan, start_time, end_time = self._query_setup(
+            topology_id, cluster, environ, start, end)
 
         output: pd.DataFrame = None
 
@@ -729,7 +720,8 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return output
 
-    def get_complete_latencies(self, topology_id: str, start: dt.datetime,
+    def get_complete_latencies(self, topology_id: str, cluster: str,
+                               environ: str, start: dt.datetime,
                                end: dt.datetime,
                                **kwargs: Union[str, int, float]
                                ) -> pd.DataFrame:
@@ -759,7 +751,7 @@ class HeronTMasterClient(HeronMetricsClient):
             * task: The instance ID number for the instance that the metric
               comes from,
             * container:  The ID for the container this metric comes from,
-            * stream: The name of the incoming stream from which the tuples
+             stream: The name of the incoming stream from which the tuples
               that lead to this metric came from,
             * latency_ms: The average execute latency measurement in
               milliseconds for that metric time period.
@@ -775,8 +767,8 @@ class HeronTMasterClient(HeronMetricsClient):
                  (end-start).total_seconds(), start.isoformat(),
                  end.isoformat())
 
-        cluster, environ, logical_plan, start_time, end_time = \
-            self._query_setup(topology_id, start, end, **kwargs)
+        logical_plan, start_time, end_time = self._query_setup(
+            topology_id, cluster, environ, start, end)
 
         # First we need to check that the supplied topology will actually have
         # complete latencies. Only ATLEAST_ONCE and EXACTLY_ONCE will have
@@ -880,8 +872,8 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return output
 
-    def get_arrival_rates(self, topology_id: str, start: dt.datetime,
-                          end: dt.datetime,
+    def get_arrival_rates(self, topology_id: str, cluster: str, environ: str,
+                          start: dt.datetime, end: dt.datetime,
                           **kwargs: Union[str, int, float]) -> pd.DataFrame:
         """ Gets the arrival rates, as a timeseries, for every instance of each
         of the bolt components of the specified topology. The start and end
@@ -918,8 +910,8 @@ class HeronTMasterClient(HeronMetricsClient):
                  (end-start).total_seconds(), start.isoformat(),
                  end.isoformat())
 
-        cluster, environ, logical_plan, start_time, end_time = \
-            self._query_setup(topology_id, start, end, **kwargs)
+        logical_plan, start_time, end_time = self._query_setup(
+            topology_id, cluster, environ, start, end)
 
         output: pd.DataFrame = None
 
@@ -953,8 +945,8 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return output
 
-    def get_receive_counts(self, topology_id: str, start: dt.datetime,
-                           end: dt.datetime,
+    def get_receive_counts(self, topology_id: str, cluster: str, environ: str,
+                           start: dt.datetime, end: dt.datetime,
                            **kwargs: Union[str, int, float]) -> pd.DataFrame:
         msg: str = ("The custom caladrius receive-count metrics is not yet "
                     "available via the TMaster metrics database")
