@@ -1,3 +1,10 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
+""" This module contains classes and methods for modelling the performance of
+Heron topologies using queueing theory. """
+
 import logging
 
 import datetime as dt

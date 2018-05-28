@@ -1,3 +1,7 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module provides general helper methods for dealing with timestamps
 database. """
 
@@ -11,9 +15,10 @@ import pandas as pd
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+
 def get_window_dt_from_now(seconds: int = 0, minutes: float = 0.0,
                            hours: float = 0.0
-                          ) -> Tuple[dt.datetime, dt.datetime]:
+                           ) -> Tuple[dt.datetime, dt.datetime]:
     """ Gets a (start datetime, end datetime) tuple where the end its now
     (UTC) and the start is calculated based on supplied arguments. Arguments
     can be supplied in one unit: seconds = 150, or as multiple units: minutes =
@@ -26,7 +31,8 @@ def get_window_dt_from_now(seconds: int = 0, minutes: float = 0.0,
         hours (float):  The duration in hours (can be fractional)
 
     Returns:
-        A (start, end) tuple where start and end are UTC datetime objects.
+        Tuple[datetime, datetime]:  A (start, end) tuple where start and end
+        are UTC datetime objects.
 
     Raises:
         RuntimeError:   If none of the required arguments are supplied.
@@ -47,6 +53,7 @@ def get_window_dt_from_now(seconds: int = 0, minutes: float = 0.0,
     start: dt.datetime = end - duration
 
     return (start, end)
+
 
 def calculate_ts_period(time_series: pd.Series) -> float:
     """ Calculates the median time period in seconds between unique sorted

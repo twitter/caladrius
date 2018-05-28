@@ -1,3 +1,7 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module contains methods for calculating the routing probabilities of
 heron topologies. """
 
@@ -21,9 +25,10 @@ from caladrius.metrics.heron.topology.routing_probabilities \
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+
 def get_comp_links_by_grouping(
         graph_traversal: GraphTraversalSource, grouping: str
-    ) -> List[Dict[str, str]]:
+        ) -> List[Dict[str, str]]:
     """ Gets a list of component connection dictionaries. These describe all
     source->stream->destination connections with the specified grouping value
     in the topology available via the supplied graph traversal source.
@@ -47,6 +52,7 @@ def get_comp_links_by_grouping(
          .by("component").by("stream").by("component").dedup().toList())
 
     return component_connections
+
 
 def set_shuffle_routing_probs(graph_client: GremlinClient,
                               topology_id: str, topology_ref: str) -> None:

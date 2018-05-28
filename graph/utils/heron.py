@@ -1,3 +1,10 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
+""" This module contains utility methods for dealing with physical graphs in
+the graph database."""
+
 import logging
 
 import datetime as dt
@@ -10,6 +17,7 @@ from caladrius.common.heron import tracker
 from caladrius.common.heron import zookeeper
 
 LOG: logging.Logger = logging.getLogger(__name__)
+
 
 def get_current_refs(graph_client: GremlinClient,
                      topology_id: str) -> List[str]:
@@ -31,8 +39,9 @@ def get_current_refs(graph_client: GremlinClient,
 
     return [ref for ref in refs if "current" in ref]
 
+
 def most_recent_graph_ref(graph_client: GremlinClient, topology_id: str
-                         ) -> Optional[Tuple[str, dt.datetime]]:
+                          ) -> Optional[Tuple[str, dt.datetime]]:
     """ Gets the most recent topology reference, for the supplied topology ID
     in a tuple with the creation datetime object.
 
@@ -62,6 +71,7 @@ def most_recent_graph_ref(graph_client: GremlinClient, topology_id: str
 
     return None
 
+
 def _physical_plan_still_current(topology_id: str,
                                  most_recent_graph_ts: dt.datetime,
                                  zk_connection: str, zk_root_node: str,
@@ -78,7 +88,7 @@ def _physical_plan_still_current(topology_id: str,
 
 def _build_graph(graph_client: GremlinClient, tracker_url: str, cluster: str,
                  environ: str, topology_id: str, ref_prefix: str = "current"
-                ) -> str:
+                 ) -> str:
 
     topology_ref: str = (ref_prefix + "/" +
                          dt.datetime.now(dt.timezone.utc).isoformat())
@@ -94,6 +104,7 @@ def _build_graph(graph_client: GremlinClient, tracker_url: str, cluster: str,
                                   physical_plan)
 
     return topology_ref
+
 
 def graph_check(graph_client: GremlinClient, zk_config: Dict[str, Any],
                 tracker_url: str, cluster: str, environ: str,
@@ -148,6 +159,5 @@ def graph_check(graph_client: GremlinClient, zk_config: Dict[str, Any],
         LOG.info("The current physical plan for topology %s is already "
                  "represented in the graph database with reference %s",
                  topology_id, topology_ref)
-
 
     return topology_ref

@@ -1,3 +1,7 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module contains classes and methods for constructing graph
 representations of Heron logical and physical plans within the Caladrius Graph
 Database."""
@@ -23,9 +27,10 @@ LOG: logging.Logger = logging.getLogger(__name__)
 
 # pylint: disable = too-many-arguments
 
+
 def _create_stream_managers(graph_client: GremlinClient, topology_id: str,
                             topology_ref: str, physical_plan: Dict[str, Any]
-                           ) -> None:
+                            ) -> None:
 
     LOG.info("Creating stream managers and container vertices")
 
@@ -67,6 +72,7 @@ def _create_stream_managers(graph_client: GremlinClient, topology_id: str,
         counter += 1
 
     LOG.info("Created %d container and stream manager vertices", counter)
+
 
 def _create_spouts(graph_client: GremlinClient, topology_id: str,
                    topology_ref: str,
@@ -114,12 +120,13 @@ def _create_spouts(graph_client: GremlinClient, topology_id: str,
                  .has("topology_id", topology_id)
                  .has("topology_ref", topology_ref)
                  .has("id", instance["container"])
-                )
+                 )
              .next())
 
             counter += 1
 
     LOG.info("Created %d spout instances", counter)
+
 
 def _create_bolts(graph_client: GremlinClient, topology_id: str,
                   topology_ref: str,
@@ -163,17 +170,18 @@ def _create_bolts(graph_client: GremlinClient, topology_id: str,
                  .has("topology_id", topology_id)
                  .has("topology_ref", topology_ref)
                  .has("id", instance["container"])
-                )
+                 )
              .next())
 
             counter += 1
 
     LOG.info("Created %d bolt instances", counter)
 
+
 def _create_logical_connections(graph_client: GremlinClient, topology_id: str,
                                 topology_ref: str,
                                 logical_plan: Dict[str, Any]
-                               ) -> None:
+                                ) -> None:
 
     # Add all the logical connections between the topology's instances
     LOG.info("Adding logical connections to topology %s instances",
@@ -214,6 +222,7 @@ def _create_logical_connections(graph_client: GremlinClient, topology_id: str,
 
     LOG.info("Created %d logical connections", counter)
 
+
 def _create_physical_connections(graph_client: GremlinClient, topology_id: str,
                                  topology_ref: str) -> None:
 
@@ -233,11 +242,13 @@ def _create_physical_connections(graph_client: GremlinClient, topology_id: str,
                  "destination_container", "destination_stream_manager")
         .by(outV())
         .by(outV().out("is_within"))
-        .by(outV().out("is_within").in_("is_within").hasLabel("stream_manager"))
+        .by(outV().out("is_within").in_("is_within")
+            .hasLabel("stream_manager"))
         .by()
         .by(inV())
         .by(inV().out("is_within"))
-        .by(inV().out("is_within").in_("is_within").hasLabel("stream_manager"))
+        .by(inV().out("is_within").in_("is_within")
+            .hasLabel("stream_manager"))
         .toList())
 
     LOG.debug("Processing %d logical connected vertices", len(logical_edges))
@@ -291,6 +302,7 @@ def _create_physical_connections(graph_client: GremlinClient, topology_id: str,
             # Set the logical edge for this pair to "remote"
             graph_client.graph_traversal.E(l_edge).property("type",
                                                             "remote").next()
+
 
 def create_physical_graph(graph_client: GremlinClient,
                           topology_id: str, topology_ref: str,
@@ -347,6 +359,7 @@ def create_physical_graph(graph_client: GremlinClient,
 
     LOG.info("Physical graph construction completed after %d seconds",
              (dt.datetime.now() - start).total_seconds())
+
 
 def populate_physical_graph(graph_client: GremlinClient,
                             metrics_client: HeronMetricsClient,

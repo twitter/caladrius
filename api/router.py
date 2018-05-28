@@ -1,3 +1,7 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module contains the methods to load the configured model and client
 classes and create routing logic for the Caladrius API. """
 

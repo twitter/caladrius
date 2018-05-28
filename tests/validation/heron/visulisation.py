@@ -1,3 +1,7 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 import datetime as dt
 
 from typing import Union
@@ -10,15 +14,15 @@ from caladrius.metrics.heron.client import HeronMetricsClient
 
 
 def plot_emit_complete_latency(metrics_client: HeronMetricsClient,
-                               topology_id: str, start: dt.datetime,
-                               end: dt.datetime,
+                               topology_id: str, cluster: str, environ: str,
+                               start: dt.datetime, end: dt.datetime,
                                **kwargs: Union[str, int, float]):
 
     emit_counts: pd.DataFrame = metrics_client.get_emit_counts(
-        topology_id, start, end, **kwargs)
+        topology_id, cluster, environ, start, end, **kwargs)
 
     complete_latencies: pd.DataFrame = metrics_client.get_complete_latencies(
-        topology_id, start, end, **kwargs)
+        topology_id, cluster, environ, start, end, **kwargs)
 
     spouts: np.ndarray = complete_latencies.component.unique()
 

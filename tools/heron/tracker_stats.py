@@ -1,5 +1,10 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ Script for displaying statistics for all topologies registered with a
 Heron Tracker instance."""
+
 import os
 import sys
 import logging

@@ -4,6 +4,14 @@ caladrius.model.traffic.heron package
 Submodules
 ----------
 
+caladrius.model.traffic.heron.base module
+-----------------------------------------
+
+.. automodule:: caladrius.model.traffic.heron.base
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 caladrius.model.traffic.heron.stats\_summary module
 ---------------------------------------------------
 

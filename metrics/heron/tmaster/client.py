@@ -1,3 +1,7 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module contains classes and methods for extracting metrics from the
 Heron Topology Master instance. """
 
@@ -6,7 +10,7 @@ import warnings
 
 import datetime as dt
 
-from typing import Dict, List, Any, Callable, Union, Tuple, cast, Optional
+from typing import Dict, List, Any, Callable, Union, Tuple, Optional
 
 import pandas as pd
 

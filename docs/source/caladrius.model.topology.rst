@@ -8,18 +8,6 @@ Subpackages
 
     caladrius.model.topology.heron
 
-Submodules
-----------
-
-caladrius.model.topology.base module
-------------------------------------
-
-.. automodule:: caladrius.model.topology.base
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-
 Module contents
 ---------------
 

@@ -1,9 +1,14 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module defines abstract base classes for the traffic modelling """
 
 from abc import abstractmethod
 from typing import Any, Dict
 
 from caladrius.model.base import Model
+
 
 class TrafficModel(Model):
     """ Abstract base class for all traffic modelling classes """

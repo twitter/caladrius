@@ -12,7 +12,6 @@ Subpackages
     caladrius.graph
     caladrius.metrics
     caladrius.model
-    caladrius.proto
 
 Submodules
 ----------

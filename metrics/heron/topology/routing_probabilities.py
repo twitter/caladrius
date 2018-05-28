@@ -1,12 +1,15 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module contains methods for calculating the routing probabilities of
 heron topologies. """
 
 import logging
-import math
 
 import datetime as dt
 
-from typing import Union, cast, List, Dict
+from typing import Union, List, Dict
 
 import pandas as pd
 
@@ -16,9 +19,11 @@ from caladrius.common.heron import tracker
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+
 def calculate_inter_instance_rps(metrics_client: HeronMetricsClient,
-                                 topology_id: str, start: dt.datetime,
-                                 end: dt.datetime) -> pd.DataFrame:
+                                 topology_id: str, cluster: str, environ: str,
+                                 start: dt.datetime, end: dt.datetime
+                                 ) -> pd.DataFrame:
     """ Get a DataFrame with the instance to instance routing probabilities for
     each source instance's output streams.
 
@@ -27,22 +32,24 @@ def calculate_inter_instance_rps(metrics_client: HeronMetricsClient,
                                                 to extract transfer count data
                                                 from.
         topology_id (str):  The topology identification string.
+        cluster (str): The cluster the topology is running on.
+        environ (str): The environment the topology is running in.
         start (dt.datetime):    The UTC datetime object for the start of the
                                 metrics gathering widow.
         end (dt.datetime):  The UTC datetime object for the end of the metrics
                             gathering widow.
 
     Returns:
-        A DataFrame with the following columns:
+        pandas.DataFrame: A DataFrame with the following columns:
 
-        source_component: The source instance's component name.
-        source_task: The source instances task ID.
-        stream: The stream ID string for the outgoing stream from the source.
-        destination_component: The destination instance's component name.
-        destination_task: The destination instance's task ID.
-        routing_probability: The probability (between 0 and 1) that a tuple
-        leaving the source instance on the specified stream will be routed to
-        the destination instance.
+        * source_component: The source instance's component name.
+        * source_task: The source instances task ID.
+        * stream: The stream ID string for the outgoing stream from the source.
+        * destination_component: The destination instance's component name.
+        * destination_task: The destination instance's task ID.
+        * routing_probability: The probability (between 0 and 1) that a tuple
+          leaving the source instance on the specified stream will be routed to
+          the destination instance.
     """
 
     LOG.info("Calculating instance to instance routing probabilities for "
@@ -50,16 +57,15 @@ def calculate_inter_instance_rps(metrics_client: HeronMetricsClient,
              start.isoformat(), end.isoformat())
 
     # Get the receive counts for the topology
-    rec_counts: pd.DataFrame = metrics_client.get_receive_counts(topology_id,
-                                                                 start=start,
-                                                                 end=end)
+    rec_counts: pd.DataFrame = metrics_client.get_receive_counts(
+        topology_id, cluster, environ, start, end)
 
     # Get the instance to instance transfers
     transfer_counts: pd.DataFrame = rec_counts.groupby(
         ["source_component", "source_task", "stream", "component", "task"]
         )["receive_count"].sum().reset_index()
     transfer_counts.rename(index=str,
-                           columns={"receive_count" : "transfer_count"},
+                           columns={"receive_count": "transfer_count"},
                            inplace=True)
 
     # Get the total emitted by each instance onto each stream
@@ -67,7 +73,7 @@ def calculate_inter_instance_rps(metrics_client: HeronMetricsClient,
         ["source_component", "source_task", "stream", "component"]
         )["receive_count"].sum().reset_index()
     total_emissions.rename(index=str,
-                           columns={"receive_count" : "total_emitted"},
+                           columns={"receive_count": "total_emitted"},
                            inplace=True)
 
     # Merge the total emissions from each instance and the total transferred
@@ -83,8 +89,8 @@ def calculate_inter_instance_rps(metrics_client: HeronMetricsClient,
     merged_counts["routing_probability"].fillna(0, inplace=True)
 
     merged_counts.rename(index=str,
-                         columns={"component" : "destination_component",
-                                  "task" : "destination_task"},
+                         columns={"component": "destination_component",
+                                  "task": "destination_task"},
                          inplace=True)
 
     return merged_counts[["source_component", "source_task", "stream",
@@ -118,22 +124,22 @@ def calculate_ISAP(metrics_client: HeronMetricsClient, topology_id: str,
                     the supplied metrics client instance.
 
     Returns:
-        A DataFrame with the following columns:
-        timestamp:  The UTC timestamp for the metric.
-        component: The component this metric comes from.
-        task:   The instance ID number for the instance that the metric
-                comes from.
-        container:  The ID for the container this metric comes from.
-        stream: The name of the incoming stream from which the tuples
-                that lead to this metric came from.
-        source_component:   The name of the component the stream's source
-                            instance belongs to>
-        execute_count: The execute count during the metric time period.
-        component_total:    The total number of tuples executed by all
-                            instances of the component in that metric time
-                            period.
-        ISAP:   The instance stream activation proportion for the given
-                instance in that metric time period.
+        pandas.DataFrame:   A DataFrame with the following columns:
+
+        * timestamp: The UTC timestamp for the metric.
+        * component: The component this metric comes from.
+        * task: The instance ID number for the instance that the metric
+          comes from.
+        * container:  The ID for the container this metric comes from.
+        * stream: The name of the incoming stream from which the tuples
+          that lead to this metric came from.
+        * source_component: The name of the component the stream's source
+          instance belongs to.
+        * execute_count: The execute count during the metric time period.
+        * component_total: The total number of tuples executed by all
+          instances of the component in that metric time period.
+        * ISAP: The instance stream activation proportion for the given
+          instance in that metric time period.
     """
 
     LOG.info("Calculating ISAP for topology %s over a %d second period from "
@@ -196,16 +202,16 @@ def calc_current_inter_instance_rps(metrics_client: HeronMetricsClient,
                               this API.
 
     Returns:
-        A DataFrame with the following columns:
+        pandas.DataFrame:   A DataFrame with the following columns:
 
-        source_component: The source instance's component name.
-        source_task: The source instances task ID.
-        stream: The stream ID string for the outgoing stream from the source.
-        destination_component: The destination instance's component name.
-        destination_task: The destination instance's task ID.
-        routing_probability: The probability (between 0 and 1) that a tuple
-        leaving the source instance on the specified stream will be routed to
-        the destination instance.
+        * source_component: The source instance's component name.
+        * source_task: The source instances task ID.
+        * stream: The stream ID string for the outgoing stream from the source.
+        * destination_component: The destination instance's component name.
+        * destination_task: The destination instance's task ID.
+        * routing_probability: The probability (between 0 and 1) that a tuple
+          leaving the source instance on the specified stream will be routed to
+          the destination instance.
 
     Raises:
         RuntimeError:   If any of the specified key word arguments are not

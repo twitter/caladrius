@@ -1,3 +1,7 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ Command line program for constructing physical graphs of heron topologies
 within the caladrius graph database. """
 
@@ -20,6 +24,7 @@ from caladrius.common.timestamp import get_window_dt_from_now
 
 LOG: logging.Logger = \
     logging.getLogger("caladrius.tools.heron.graph_builder")
+
 
 def create_parser() -> argparse.ArgumentParser:
     """ Helper function for creating the command line arguments parser. """
@@ -58,6 +63,7 @@ def create_parser() -> argparse.ArgumentParser:
                               "be suppressed."))
     return parser
 
+
 if __name__ == "__main__":
 
     ARGS: argparse.Namespace = create_parser().parse_args()
@@ -67,8 +73,8 @@ if __name__ == "__main__":
 
     if ARGS.populate and not ARGS.duration:
         MSG: str = ("Populate flag was supplied but duration argument "
-                    "(-d/--duration)was not. Please supply a metrics gathering "
-                    "window duration in integer seconds.")
+                    "(-d/--duration)was not. Please supply a metrics "
+                    "gathering window duration in integer seconds.")
 
         if ARGS.quiet:
             print(MSG)
@@ -102,7 +108,6 @@ if __name__ == "__main__":
                                                       ARGS.environment,
                                                       ARGS.topology)
 
-
     GRAPH_CLIENT: GremlinClient = GremlinClient(CONFIG["graph.client.config"])
 
     builder.create_physical_graph(GRAPH_CLIENT,
@@ -124,8 +129,9 @@ if __name__ == "__main__":
                                             ARGS.topology, ARGS.reference,
                                             START, END)
         except KeyError as kerr:
-            err_msg: str = ("Caladrius metrics not present in metrics database. "
-                            "Cannot continue with graph metrics population.")
+            err_msg: str = ("Caladrius metrics not present in metrics "
+                            "database. Cannot continue with graph metrics "
+                            "population.")
 
             if ARGS.quiet:
                 print(err_msg)

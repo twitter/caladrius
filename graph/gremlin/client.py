@@ -1,3 +1,7 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module contains classes and methods for connecting to and
 communicating with a Gremlin Server instance. """
 
@@ -15,6 +19,7 @@ from gremlin_python.driver.driver_remote_connection \
 from caladrius.config.keys import ConfKeys
 
 LOG: logging.Logger = logging.getLogger(__name__)
+
 
 class GremlinClient(object):
     """ Client class for the TinkerPop Gremlin Server """

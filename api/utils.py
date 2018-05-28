@@ -1,7 +1,12 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module contains helper methods for the REST API. """
 from typing import Dict, List, Any, Hashable
 
 from werkzeug.datastructures import ImmutableMultiDict
+
 
 def convert_wimd_to_dict(wimd: ImmutableMultiDict) -> dict:
     """ Converts the supplied werkzeug ImmutableMultiDict object into a regular

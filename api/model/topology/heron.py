@@ -1,8 +1,12 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This is the rooting logic for the Apache Heron topology performance
 modelling API """
 import logging
 
-from typing import List, Type, Dict, Any, Tuple, Hashable
+from typing import List, Type, Dict, Any, Tuple
 
 import pandas as pd
 
@@ -39,6 +43,8 @@ class HeronTopologyModels(Resource):
 
 
 class HeronCurrent(Resource):
+    """ Resource class for modelling the performance of currently running Heron
+    topologies. """
 
     def __init__(self, model_classes: List[Type], model_config: Dict[str, Any],
                  metrics_client: HeronMetricsClient,
@@ -58,6 +64,8 @@ class HeronCurrent(Resource):
         super().__init__()
 
     def post(self, topology_id: str) -> Tuple[Dict[str, Any], int]:
+        """ Method handling POST requests to the current topology performance
+        modelling endpoint."""
 
         # Make sure we have the args we need
         errors: List[Dict[str, str]] = []

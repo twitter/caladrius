@@ -1,3 +1,7 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ Abstract base class from which all Caladrius models inherit """
 
 from abc import ABC, abstractmethod
@@ -5,6 +9,7 @@ from typing import Any
 
 from caladrius.metrics.client import MetricsClient
 from caladrius.graph.gremlin.client import GremlinClient
+
 
 class Model(ABC):
     """ Abstract base class for all caladrius model classes"""

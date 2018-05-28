@@ -1,3 +1,7 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module contains methods for extracting and analysing information from
 the Heron Tracker services REST API:
 https://twitter.github.io/heron/docs/operators/heron-tracker-api/
@@ -29,11 +33,12 @@ def get_topologies(tracker_url: str, cluster: str = None,
 
     Returns:
         pandas.DataFrame:   A DataFrame containing details of all topologies
-        registered with  the Heron tracker. This has the columns for:
-        *topology*: The topology ID,
-        *cluster*: The cluster the topology is running on,
-        *environ*: The environment the topology is running in,
-        *user*: The user that uploaded the topology.
+        registered with the Heron tracker. This has the columns for:
+
+        * topology: The topology ID.
+        * cluster: The cluster the topology is running on.
+        * environ: The environment the topology is running in.
+        * user: The user that uploaded the topology.
 
     Raises:
         requests.HTTPError: If a non 200 status code is returned.

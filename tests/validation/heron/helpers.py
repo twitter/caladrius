@@ -1,3 +1,7 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module contains helper methods for use in validating the modelling of
 Heron Topologies. """
 
@@ -5,7 +9,7 @@ import logging
 
 import datetime as dt
 
-from typing import Dict, Any, DefaultDict, Union, cast, List, Tuple
+from typing import Dict, Any, DefaultDict, Union
 from collections import defaultdict
 
 import pandas as pd

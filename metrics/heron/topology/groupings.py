@@ -1,5 +1,10 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """ This module contains methods for analysing and summarising the groupings
 within Heron topologies. """
+
 import logging
 
 from typing import Set, Tuple, Dict, Any, DefaultDict
