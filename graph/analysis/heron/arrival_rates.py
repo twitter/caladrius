@@ -32,6 +32,7 @@ OUTPUT_RATES = DefaultDict[int, Dict[str, float]]
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+
 def get_levels(topo_traversal: GraphTraversalSource) -> List[List[Vertex]]:
     """ Gets the levels of the logical graph. The traversal starts with the
     source spouts and performs a breadth first search through the logically
@@ -74,16 +75,17 @@ def get_levels(topo_traversal: GraphTraversalSource) -> List[List[Vertex]]:
 
     return levels
 
+
 @lru_cache()
 def _setup_arrival_calcs(metrics_client: HeronMetricsClient,
                          graph_client: GremlinClient,
-                         topology_id: str, topology_ref: str,
-                         start: dt.datetime, end: dt.datetime,
-                         io_bucket_length: int,
-                         **kwargs: Union[str, int, float]
-                        ) -> Tuple[pd.DataFrame, List[List[Vertex]],
-                                   pd.DataFrame, Dict[Vertex, List[int]],
-                                   Dict[Vertex, List[int]]]:
+                         topology_id: str, cluster: str, environ: str,
+                         topology_ref: str, start: dt.datetime,
+                         end: dt.datetime, io_bucket_length: int,
+                         tracker_url: str, **kwargs: Union[str, int, float]
+                         ) -> Tuple[pd.DataFrame, List[List[Vertex]],
+                                    pd.DataFrame, Dict[Vertex, List[int]],
+                                    Dict[Vertex, List[int]]]:
     """ Helper method which sets up the data needed for the arrival rate
     calculations. This is a separate cached method as these data are not
     effected by the traffic (spout_state) and so do not need to be recalculated
@@ -94,10 +96,10 @@ def _setup_arrival_calcs(metrics_client: HeronMetricsClient,
 
     # Calculate the routing probabilities for the defined metric gathering
     # period
-    i2i_rps: pd.Series = calculate_inter_instance_rps(
-        metrics_client, topology_id, start, end, **kwargs).set_index(
-            ["source_task", "destination_task", "stream"]
-        )["routing_probability"]
+    i2i_rps: pd.Series = (calculate_inter_instance_rps(
+        metrics_client, topology_id, cluster, environ, start, end, tracker_url,
+        **kwargs).set_index(["source_task", "destination_task", "stream"])
+     ["routing_probability"])
 
     # Get the vertex levels for the logical graph tree
     LOG.info("Calculating levels for topology %s reference %s", topology_id,
@@ -109,11 +111,11 @@ def _setup_arrival_calcs(metrics_client: HeronMetricsClient,
     # Calculate the input output ratios for each instances using data from the
     # defined metrics gathering period
     coefficients: pd.Series = lstsq_io_ratios(
-        metrics_client, graph_client, topology_id, start, end,
-        io_bucket_length, **kwargs).set_index(["task", "output_stream",
-                                               "input_stream",
-                                               "source_component"]
-                                             )["coefficient"]
+        metrics_client, graph_client, topology_id, cluster, environ, start,
+        end, io_bucket_length, **kwargs).set_index(["task", "output_stream",
+                                                    "input_stream",
+                                                    "source_component"]
+                                                   )["coefficient"]
 
     # Get the details of the incoming and outgoing physical connections for
     # stream manager in the topology
@@ -141,6 +143,7 @@ def _setup_arrival_calcs(metrics_client: HeronMetricsClient,
     return (i2i_rps, levels, coefficients, sending_instances,
             receiving_instances)
 
+
 def _calculate_arrivals(topo_traversal: GraphTraversalSource,
                         source_vertex: Vertex, arrival_rates: ARRIVAL_RATES,
                         output_rates: DefaultDict[int, Dict[str, float]],
@@ -161,36 +164,62 @@ def _calculate_arrivals(topo_traversal: GraphTraversalSource,
     source_task: int = cast(int, out_edges[0]["source_task"])
     source_component: str = cast(str, out_edges[0]["source_component"])
 
-    LOG.debug("Processing output from source instance %s-%d",
+    LOG.debug("Processing output from source instance %s_%d",
               source_component, source_task)
 
     for out_edge in out_edges:
         stream: str = cast(str, out_edge["stream_name"])
-        stream_output: float = cast(float,
-                                    output_rates[source_task][stream])
+        try:
+            stream_output: float = cast(float,
+                                        output_rates[source_task][stream])
+        except KeyError:
+            LOG.debug("No output rate information for source task %d on "
+                      "stream %s. Skipping the outgoing edge", source_task,
+                      stream)
+            continue
+
         destination_task: int = cast(int, out_edge["destination_task"])
 
-        r_prob: float = float(i2i_rps.loc[source_task, destination_task,
-                                          stream])
+        try:
+            r_prob: float = float(i2i_rps.loc(axis=0)[source_task,
+                                                      destination_task,
+                                                      stream])
+        except KeyError:
+            LOG.debug("Unable to find routing probability for connection from "
+                      "task %d to %d on stream %s", source_task,
+                      destination_task, stream)
 
-        edge_output: float = (stream_output * r_prob)
+            edge_output: float = 0.0
+        else:
 
-        LOG.debug("Output from %s-%d to %s-%d on stream %s is "
-                  "calculated as %f", source_component, source_task,
-                  out_edge["destination_component"], destination_task,
-                  stream, edge_output)
+            if stream_output < 0:
+                print("-ve stream output")
+                import pdb; pdb.set_trace()
+
+            if r_prob < 0:
+                print("-ve routing probability")
+                import pdb; pdb.set_trace()
+
+            edge_output = (stream_output * r_prob)
+
+            LOG.debug("Output from %s-%d to %s-%d on stream %s is "
+                      "calculated as %f * %f = %f", source_component,
+                      source_task, out_edge["destination_component"],
+                      destination_task, stream, stream_output, r_prob,
+                      edge_output)
 
         arrival_rates[destination_task][
             (stream, source_component)] += edge_output
 
     return arrival_rates
 
+
 def _calculate_outputs(topo_traversal: GraphTraversalSource,
                        source_vertex: Vertex,
                        arrival_rates: ARRIVAL_RATES,
                        output_rates: DefaultDict[int, Dict[str, float]],
                        coefficients: pd.Series,
-                      ) -> DefaultDict[int, Dict[str, float]]:
+                       ) -> DefaultDict[int, Dict[str, float]]:
 
     source_task: int = (topo_traversal.V(source_vertex)
                         .properties("task_id").value().next())
@@ -218,15 +247,31 @@ def _calculate_outputs(topo_traversal: GraphTraversalSource,
                 arrival_rates[source_task][(in_stream_name,
                                             source_component)]
 
-            coefficent: float = float(coefficients.loc[
-                source_task, out_stream, in_stream_name,
-                source_component])
+            try:
+                coefficent: float = float(coefficients.loc[
+                    source_task, out_stream, in_stream_name,
+                    source_component])
+            except KeyError:
+                LOG.debug("No coefficient available for source task %d, "
+                          "out stream %s, in stream %s from component %s",
+                          source_task, out_stream, in_stream_name,
+                          source_component)
+            else:
+                output_rate += (stream_arrivals * coefficent)
 
-            output_rate += (stream_arrivals * coefficent)
+        # It is possible that some of the IO coefficients may be negative,
+        # implying that the more you receive on an input stream the less you
+        # output to a given output stream. If we anticipate a large arrival on
+        # this negative input stream and low on other positive streams then it
+        # is possible that the predicted output rate could be negative (which
+        # is obviously meaningless).
+        if output_rate < 0.0:
+            output_rate = 0.0
 
         output_rates[source_task][out_stream] = output_rate
 
     return output_rates
+
 
 def _convert_arrs_to_df(arrival_rates: ARRIVAL_RATES) -> pd.DataFrame:
 
@@ -236,13 +281,14 @@ def _convert_arrs_to_df(arrival_rates: ARRIVAL_RATES) -> pd.DataFrame:
         for (incoming_stream, source_component), arrival_rate \
                 in incoming_streams_dict.items():
             row: Dict[str, Union[str, float]] = {
-                "task" : task_id,
-                "incoming_stream" : incoming_stream,
-                "source_component" : source_component,
-                "arrival_rate" : arrival_rate}
+                "task": task_id,
+                "incoming_stream": incoming_stream,
+                "source_component": source_component,
+                "arrival_rate": arrival_rate}
             output.append(row)
 
     return pd.DataFrame(output)
+
 
 def _calc_strmgr_in_out(sending_instances: Dict[str, List[int]],
                         receiving_instances: Dict[str, List[int]],
@@ -275,19 +321,20 @@ def _calc_strmgr_in_out(sending_instances: Dict[str, List[int]],
     strmgr_output: List[Dict[str, Union[str, float, None]]] = []
     for strmgr in (set(strmgr_incoming.keys()) or set(strmgr_outgoing.keys())):
         row: Dict[str, Union[str, float, None]] = {
-            "id" : strmgr,
-            "incoming" : strmgr_incoming.get(strmgr, None),
-            "outgoing" : strmgr_outgoing.get(strmgr, None)}
+            "id": strmgr,
+            "incoming": strmgr_incoming.get(strmgr, None),
+            "outgoing": strmgr_outgoing.get(strmgr, None)}
         strmgr_output.append(row)
 
     return pd.DataFrame(strmgr_output)
 
+
 def calculate(graph_client: GremlinClient, metrics_client: HeronMetricsClient,
-              topology_id: str, topology_ref: str, start: dt.datetime,
-              end: dt.datetime, io_bucket_length: int,
-              spout_state: Dict[int, Dict[str, float]],
+              topology_id: str, cluster: str, environ: str, topology_ref: str,
+              start: dt.datetime, end: dt.datetime, io_bucket_length: int,
+              tracker_url: str, spout_state: Dict[int, Dict[str, float]],
               **kwargs: Union[str, int, float]
-             ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+              ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
 
     Arguments:
@@ -296,6 +343,8 @@ def calculate(graph_client: GremlinClient, metrics_client: HeronMetricsClient,
         metrics_client (HeronMetricsClient):    The client instance for the
                                                 metrics database.
         topology_id (str):  The topology identification string.
+        cluster: (str): The cluster the topology is running on.
+        environ (str): The environment the topology is running in.
         topology_ref (str): The reference string for the topology physical
                             graph to be used in the calculations.
         start (dt.datetime):    The UTC datetime instance representing the
@@ -304,6 +353,7 @@ def calculate(graph_client: GremlinClient, metrics_client: HeronMetricsClient,
                             the metric gathering window.
         io_bucket_length (int): The length in seconds that metrics should be
                                 aggregated for use in IO ratio calculations.
+        tracker_url (str):  The URL for the Heron Tracker API
         spout_state (dict): A dictionary mapping from instance task id to a
                             dictionary that maps from output stream name to the
                             output rate for that spout instance. The units of
@@ -336,8 +386,8 @@ def calculate(graph_client: GremlinClient, metrics_client: HeronMetricsClient,
 
     i2i_rps, levels, coefficients, sending_instances, receiving_instances = \
         _setup_arrival_calcs(metrics_client, graph_client, topology_id,
-                             topology_ref, start, end, io_bucket_length,
-                             **kwargs)
+                             cluster, environ, topology_ref, start, end,
+                             io_bucket_length, tracker_url, **kwargs)
 
     topo_traversal: GraphTraversalSource = \
         graph_client.topology_subgraph(topology_id, topology_ref)

@@ -12,10 +12,11 @@ from flask_restful import Resource
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.graph.utils.heron import graph_check
-from caladrius.model.topology.base import TopologyModel
+from caladrius.model.topology.heron.base import HeronTopologyModel
 from caladrius.api import utils
 
 LOG: logging.Logger = logging.getLogger(__name__)
+
 
 class HeronTopologyModels(Resource):
     """ Resource class for the Heron topology model information end point."""
@@ -36,12 +37,12 @@ class HeronTopologyModels(Resource):
         """
         return self.models_info
 
+
 class HeronCurrent(Resource):
 
     def __init__(self, model_classes: List[Type], model_config: Dict[str, Any],
                  metrics_client: HeronMetricsClient,
                  graph_client: GremlinClient, tracker_url: str) -> None:
-
 
         self.metrics_client: HeronMetricsClient = metrics_client
         self.graph_client: GremlinClient = graph_client
@@ -49,7 +50,7 @@ class HeronCurrent(Resource):
         self.tracker_url: str = tracker_url
         self.model_config: Dict[str, Any] = model_config
 
-        self.models: Dict[str, TopologyModel] = {}
+        self.models: Dict[str, HeronTopologyModel] = {}
         for model_class in model_classes:
             model = model_class(model_config, metrics_client, graph_client)
             self.models[model.name] = model
@@ -61,22 +62,22 @@ class HeronCurrent(Resource):
         # Make sure we have the args we need
         errors: List[Dict[str, str]] = []
         if "cluster" not in request.args:
-            errors.append({"type" : "MissingParameter",
-                           "error":"'cluster' parameter should be supplied"})
+            errors.append({"type": "MissingParameter",
+                           "error": "'cluster' parameter should be supplied"})
 
         if "environ" not in request.args:
-            errors.append({"type" : "MissingParameter",
-                           "error" : "'environ' parameter should be supplied"})
+            errors.append({"type": "MissingParameter",
+                           "error": "'environ' parameter should be supplied"})
 
         if "model" not in request.args:
-            errors.append({"type" : "MissingParameter",
-                           "error" : ("At least one 'model' parameter should "
-                                      "be supplied. Supply 'all' to run all "
-                                      "configured models")})
+            errors.append({"type": "MissingParameter",
+                           "error": ("At least one 'model' parameter should "
+                                     "be supplied. Supply 'all' to run all "
+                                     "configured models")})
 
         # Return useful errors to the client if any parameters are missing
         if errors:
-            return {"errors" : errors}, 400
+            return {"errors": errors}, 400
 
         LOG.info("Processing performance modelling request for topology: %s, "
                  "cluster: %s, environment: %s, using model: %s", topology_id,
@@ -93,7 +94,7 @@ class HeronCurrent(Resource):
         # integers
         json_traffic: Dict[str, Dict[str, float]] = request.get_json()
         traffic: Dict[int, Dict[str, float]] = \
-            {int(key) : value for key, value in json_traffic.items()}
+            {int(key): value for key, value in json_traffic.items()}
 
         if "all" in request.args.getlist("model"):
             LOG.info("Running all configured Heron topology performance "
@@ -118,17 +119,20 @@ class HeronCurrent(Resource):
 
             try:
                 results: pd.DataFrame = model.predict_current_performance(
-                    topology_id=topology_id, spout_traffic=traffic, **model_kwargs)
+                    topology_id=topology_id,
+                    cluster=request.args.get("cluster"),
+                    environ=request.args.get("environ"),
+                    spout_traffic=traffic, **model_kwargs)
             except Exception as err:
                 LOG.error("Error running model: %s -> %s", model.name,
                           str(err))
                 errors.append({"model": model.name, "type": str(type(err)),
-                               "error" : str(err)})
+                               "error": str(err)})
             else:
                 output[model_name] = results.to_json(orient="records")
 
         if errors:
-            return {"errors" : errors}, 500
+            return {"errors": errors}, 500
 
         return output, 200
 

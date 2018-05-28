@@ -11,7 +11,7 @@ from collections import defaultdict
 import pandas as pd
 
 from caladrius.common.timestamp import calculate_ts_period
-from caladrius.model.traffic.base import TrafficModel
+from caladrius.model.traffic.heron.base import HeronTrafficModel
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.gremlin.client import GremlinClient
 
@@ -19,7 +19,8 @@ LOG: logging.Logger = logging.getLogger(__name__)
 
 SUMMARY_DICT = Dict[str, float]
 
-class StatsSummaryTrafficModel(TrafficModel):
+
+class StatsSummaryTrafficModel(HeronTrafficModel):
     """ This model provides summary statistics for the spout instances emit
     metrics (traffic)."""
 
@@ -53,7 +54,7 @@ class StatsSummaryTrafficModel(TrafficModel):
                         " using; 10, 90, 95, 99 as defaults.")
             self.quantiles = [10, 90, 95, 99]
 
-    def predict_traffic(self, topology_id: str,
+    def predict_traffic(self, topology_id: str, cluster: str, environ: str,
                         **kwargs: Union[str, int, float]) -> Dict[str, Any]:
         """ This method will provide a summary of the emit counts from the
         spout instances of the specified topology. It will summarise the emit
@@ -67,10 +68,19 @@ class StatsSummaryTrafficModel(TrafficModel):
             **source_hours (int):   Optional keyword argument for the number of
                                     hours (backwards from now) of metrics data
                                     to summarise.
+            **metric_sample_period (float): This is an optional argument
+                                            specifying the period (seconds) of
+                                            the metrics returned by the metrics
+                                            client. If this is not supplied
+                                            this method will try to infer the
+                                            period from the returned metric.
+                                            However this will require
+                                            additional computation and is
+                                            susceptible to errors.
         Returns:
-            A dictionary with top level keys for "components" which links to
-            summary statistics for each spout instance and "instances" with
-            summary statistics for each individual instance of each spout
+            dict:   A dictionary with top level keys for "components" which
+            links to summary statistics for each spout instance and "instances"
+            with summary statistics for each individual instance of each spout
             component.
 
             The dictionary has the form:
@@ -85,7 +95,7 @@ class StatsSummaryTrafficModel(TrafficModel):
                             [output_stream_name] = emit_count
 
             All dictionary keys are stings to allow easy conversion to JSON.
-            """
+        """
 
         if "source_hours" not in kwargs:
             LOG.warning("source_hours parameter (indicating how many hours of "
@@ -108,30 +118,37 @@ class StatsSummaryTrafficModel(TrafficModel):
                                   .dedup().toList())
 
         emit_counts: pd.DataFrame = self.metrics_client.get_emit_counts(
-            topology_id, start, end, **kwargs)
+            topology_id, cluster, environ, start, end, **kwargs)
 
         spout_emit_counts: pd.DataFrame = emit_counts[
             emit_counts["component"].isin(spout_comps)]
 
-        # TODO: This method needs to be made robust, interleaved unique
-        # timestamps will return entirely the wrong period!!!
-        # TODO: Maybe introduce aggregation time bucket into metric client
-        # methods to create known time period.
-        time_period_sec: float = \
-            calculate_ts_period(spout_emit_counts.timestamp)
-        LOG.info("Emit count data was calculated to have a period of %f "
-                 "seconds", time_period_sec)
+        if "metrics_sample_period" in kwargs:
+            time_period_sec: float = cast(float,
+                                          kwargs["metrics_sample_period"])
+        else:
+            # TODO: This method needs to be made robust, interleaved unique
+            # timestamps will return entirely the wrong period!!!
+            # TODO: Maybe introduce aggregation time bucket into metric client
+            # methods to create known time period.
+            # TODO: Or just accept the timer frequency of the metrics as an
+            # argument? For TMaster it is always 1 min and for others this can
+            # be supplied in the kwargs passed to the metrics get method so it
+            # will be available.
+            time_period_sec = calculate_ts_period(spout_emit_counts.timestamp)
+            LOG.info("Emit count data was calculated to have a period of %f "
+                     "seconds", time_period_sec)
 
         output: Dict[str, Any] = {}
 
         output["details"] = {"start": start.isoformat(),
-                             "end" : end.isoformat(),
-                             "source_hours" : source_hours,
-                             "original_metric_frequency_secs" :
+                             "end": end.isoformat(),
+                             "source_hours": source_hours,
+                             "original_metric_frequency_secs":
                              time_period_sec}
 
         components: DefaultDict[str, DefaultDict[str, SUMMARY_DICT]] = \
-                defaultdict(lambda: defaultdict(dict))
+            defaultdict(lambda: defaultdict(dict))
 
         for (comp, stream), comp_data in \
                 spout_emit_counts.groupby(["component", "stream"]):
@@ -156,7 +173,7 @@ class StatsSummaryTrafficModel(TrafficModel):
         output["components"] = components
 
         instances: DefaultDict[str, DefaultDict[str, SUMMARY_DICT]] = \
-                defaultdict(lambda: defaultdict(dict))
+            defaultdict(lambda: defaultdict(dict))
 
         for (task_id, stream), task_data in \
                 spout_emit_counts.groupby(["task", "stream"]):

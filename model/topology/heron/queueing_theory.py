@@ -2,11 +2,11 @@ import logging
 
 import datetime as dt
 
-from typing import Dict, Any, Union, cast
+from typing import Dict, Any, cast, Union, Tuple
 
 import pandas as pd
 
-from caladrius.model.topology.base import TopologyModel
+from caladrius.model.topology.heron.base import HeronTopologyModel
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.graph.analysis.heron import arrival_rates
@@ -14,7 +14,8 @@ from caladrius.graph.utils.heron import graph_check
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
-class QTTopologyModel(TopologyModel):
+
+class QTTopologyModel(HeronTopologyModel):
 
     name: str = "queuing_theory_topology_model"
 
@@ -29,9 +30,43 @@ class QTTopologyModel(TopologyModel):
         self.metrics_client: HeronMetricsClient
         self.tracker_url: str = config["heron.tracker.url"]
 
+    def predict_arrival_rates(self, topology_id: str,
+                              cluster: str, environ: str,
+                              spout_traffic: Dict[int, Dict[str, float]],
+                              start: dt.datetime, end: dt.datetime,
+                              metric_bucket_length: int,
+                              topology_ref: str = None, **kwargs: Any
+                              ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+
+        if not topology_ref:
+            # Get the reference of the latest physical graph entry for this
+            # topology, or create a physical graph if there are non.
+            topology_ref = graph_check(self.graph_client, self.config,
+                                       self.tracker_url, cluster, environ,
+                                       topology_id)
+
+        # Predict Arrival Rates for all elements
+        instance_ars: pd.DataFrame
+        strmgr_ars: pd.DataFrame
+        instance_ars, strmgr_ars =  \
+            arrival_rates.calculate(
+                self.graph_client, self.metrics_client, topology_id, cluster,
+                environ, topology_ref, start, end, metric_bucket_length,
+                self.tracker_url, spout_traffic, **kwargs)
+
+        # Sum the arrivals from each source component of each incoming stream
+        instance_ars.groupby(["task", "incoming_stream"]).sum()
+
+        in_ars: pd.DataFrame =  \
+            (instance_ars.groupby(["task", "incoming_stream"]).sum()
+             .reset_index().rename(index=str,
+                                   columns={"incoming_stream": "stream"}))
+
+        return in_ars, strmgr_ars
 
     def predict_current_performance(
-            self, topology_id: str, spout_traffic: Dict[int, Dict[str, float]],
+            self, topology_id: str, cluster: str, environ: str,
+            spout_traffic: Dict[int, Dict[str, float]],
             **kwargs: Any) -> pd.DataFrame:
         """
 
@@ -42,15 +77,8 @@ class QTTopologyModel(TopologyModel):
                                     second (tps) otherwise they will not match
                                     with the service time measurements.
         """
-        print(f"kwargs: {kwargs}")
-        try:
-            cluster: str = cast(str, kwargs["cluster"])
-            environ: str = cast(str, kwargs["environ"])
-        except KeyError as kerr:
-            ke_msg: str = (f"Keyword argument: {kerr.args[0]} should be "
-                           f"supplied.")
-            LOG.error(ke_msg)
-            raise KeyError(ke_msg)
+
+        # TODO: check spout traffic keys are integers!
 
         if "start" in kwargs and "end" in kwargs:
             start_ts: int = int(kwargs["start"])
@@ -89,26 +117,26 @@ class QTTopologyModel(TopologyModel):
         # Remove the start and end time kwargs so we don't supply them twice to
         # the metrics client.
         # TODO: We need to make this cleaner? Add start and end to topo model?
-        other_kwargs: Dict[str, Any] = {key : value
+        other_kwargs: Dict[str, Any] = {key: value
                                         for key, value in kwargs.items()
                                         if key not in ["start", "end"]}
 
         # Get the service time for all elements
         service_times: pd.DataFrame = self.metrics_client.get_service_times(
-            topology_id, start, end, **other_kwargs)
+            topology_id, cluster, environ, start, end, **other_kwargs)
 
         # Calculate the service rate for each instance
         service_times["tuples_per_sec"] = 1.0 / (service_times["latency_ms"] /
                                                  1000.0)
 
         # Drop the system streams
-        service_times = service_times[~service_times["stream"].str.contains("__")]
+        service_times = (service_times[~service_times["stream"]
+                         .str.contains("__")])
 
         # Calculate the median service time and rate
         service_time_summary: pd.DataFrame = \
             (service_times[["task", "stream", "latency_ms", "tuples_per_sec"]]
              .groupby(["task", "stream"]).median().reset_index())
-
 
         # Get the reference of the latest physical graph entry for this
         # topology, or create a physical graph if there are non.
@@ -116,24 +144,11 @@ class QTTopologyModel(TopologyModel):
                                         self.tracker_url, cluster, environ,
                                         topology_id)
 
-        print(other_kwargs)
-
-        # Predict Arrival Rates for all elements
-        instance_ars: pd.DataFrame
-        strmgr_ars: pd.DataFrame
-        instance_ars, strmgr_ars =  \
-            arrival_rates.calculate(
-                self.graph_client, self.metrics_client, topology_id,
-                topology_ref, start, end, metric_bucket_length, spout_traffic,
-                tracker_url=self.tracker_url, **other_kwargs)
-
-        # Sum the arrivals from each source component of each incoming stream
-        instance_ars.groupby(["task", "incoming_stream"]).sum()
-
-        in_ars: pd.DataFrame =  \
-            (instance_ars.groupby(["task", "incoming_stream"]).sum()
-             .reset_index().rename(index=str,
-                                   columns={"incoming_stream" : "stream"}))
+        # Predict the arrival rate at all instances with the supplied spout
+        # traffic
+        in_ars, strmgr_ars = self.predict_arrival_rates(
+            topology_id, cluster, environ, spout_traffic, start, end,
+            metric_bucket_length, topology_ref)
 
         combined: pd.DataFrame = service_time_summary.merge(
             in_ars, on=["task", "stream"])

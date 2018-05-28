@@ -2,7 +2,6 @@
 modelling """
 
 import logging
-import json
 
 from typing import List, Dict, Type, Any
 
@@ -14,6 +13,7 @@ from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.utils.heron import graph_check
 
 LOG: logging.Logger = logging.getLogger(__name__)
+
 
 class HeronTrafficModels(Resource):
     """ Resource class for the traffic model information endpoint. """
@@ -33,6 +33,7 @@ class HeronTrafficModels(Resource):
         information dictionaries that contain "name" and "description" keys.
         """
         return self.models_info
+
 
 class HeronTraffic(Resource):
     """ This resource handles requests for traffic modelling of specific
@@ -75,10 +76,9 @@ class HeronTraffic(Resource):
 
         # Make sure we have a current graph representing the physical plan for
         # the topology
-        topology_ref: str = graph_check(self.graph_client, self.model_config,
-                                        self.tracker_url,
-                                        request_args["cluster"],
-                                        request_args["environ"], topology_id)
+        graph_check(self.graph_client, self.model_config, self.tracker_url,
+                    request_args["cluster"], request_args["environ"],
+                    topology_id)
 
         output: Dict[str, Any] = {}
         output["errors"] = {}

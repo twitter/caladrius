@@ -92,8 +92,9 @@ def calculate_inter_instance_rps(metrics_client: HeronMetricsClient,
                           "routing_probability"]]
 
 def calculate_ISAP(metrics_client: HeronMetricsClient, topology_id: str,
-                   start: dt.datetime, end: dt.datetime,
-                   **kwargs: Union[str, int, float]) -> pd.DataFrame:
+                   cluster: str, environ: str, start: dt.datetime,
+                   end: dt.datetime, **kwargs: Union[str, int, float]
+                   ) -> pd.DataFrame:
     """ Calculates the Instance Stream Activation Proportion (ISAP) for each
     instance in the specified topology. This is the proportion, relative to the
     total activation of all instances of the same component, that each instance
@@ -107,6 +108,8 @@ def calculate_ISAP(metrics_client: HeronMetricsClient, topology_id: str,
                                                 to extract transfer count data
                                                 from.
         topology_id (str):  The topology identification string.
+        cluster (str): The cluster the topology is running in.
+        environ (str): The environment the topology is running in.
         start (dt.datetime):    The UTC datetime object for the start of the
                                 metrics gathering widow.
         end (dt.datetime):  The UTC datetime object for the end of the metrics
@@ -138,14 +141,13 @@ def calculate_ISAP(metrics_client: HeronMetricsClient, topology_id: str,
              start.isoformat(), end.isoformat())
 
     execute_counts: pd.DataFrame = metrics_client.get_execute_counts(
-        topology_id, start, end, **kwargs)
-
+        topology_id, cluster, environ, start, end, **kwargs)
 
     ex_counts_totals: pd.DataFrame = execute_counts.merge(
         execute_counts.groupby(
             ["component", "stream", "source_component", "timestamp"])
         .execute_count.sum().reset_index()
-        .rename(index=str, columns={"execute_count" : "component_total"}),
+        .rename(index=str, columns={"execute_count": "component_total"}),
         on=["component", "stream", "source_component", "timestamp"])
 
     ex_counts_totals["ISAP"] = (ex_counts_totals["execute_count"] /
@@ -156,10 +158,11 @@ def calculate_ISAP(metrics_client: HeronMetricsClient, topology_id: str,
     return ex_counts_totals
 
 def calc_current_inter_instance_rps(metrics_client: HeronMetricsClient,
-                                    topology_id: str, start: dt.datetime,
-                                    end: dt.datetime,
+                                    topology_id: str, cluster: str,
+                                    environ: str, start: dt.datetime,
+                                    end: dt.datetime, tracker_url: str,
                                     **kwargs: Union[str, int, float]
-                                   ) -> pd.DataFrame:
+                                    ) -> pd.DataFrame:
     """ Get a DataFrame with the instance to instance routing probabilities for
     each source instance's output streams from a currently running topology.
     This method uses several assumptions to infer the routing probabilities
@@ -180,17 +183,17 @@ def calc_current_inter_instance_rps(metrics_client: HeronMetricsClient,
                                                 to extract transfer count data
                                                 from.
         topology_id (str):  The topology identification string.
+        cluster (str):    The cluster parameter for the Heron Tracker API.
+        environ (str):    The environ parameter (prod, devel, test etc) for
+                            the Heron Tracker API.
         start (dt.datetime):    The UTC datetime object for the start of the
                                 metrics gathering widow.
         end (dt.datetime):  The UTC datetime object for the end of the metrics
                             gathering widow.
-        **tracker_url (str):    The URL for the Heron Tracker API. This method
-                                needs to analyse the logical and physical plans
-                                of the specified topology so needs access to
-                                this API.
-        **cluster (str):    The cluster parameter for the Heron Tracker API.
-        **environ (str):    The environ parameter (prod, devel, test etc) for
-                            the Heron Tracker API.
+        tracker_url (str):    The URL for the Heron Tracker API. This method
+                              needs to analyse the logical and physical plans
+                              of the specified topology so needs access to
+                              this API.
 
     Returns:
         A DataFrame with the following columns:
@@ -217,15 +220,6 @@ def calc_current_inter_instance_rps(metrics_client: HeronMetricsClient,
              "topology %s for period from %s to %s", topology_id,
              start.isoformat(), end.isoformat())
 
-    try:
-        tracker_url: str = cast(str, kwargs["tracker_url"])
-        cluster: str = cast(str, kwargs["cluster"])
-        environ: str = cast(str, kwargs["environ"])
-    except KeyError as kerr:
-        ke_msg: str = f"Keyword argument: {kerr.args[0]} should be supplied."
-        LOG.error(ke_msg)
-        raise RuntimeError(ke_msg)
-
     LOG.debug("Checking for fields to fields grouped connections")
 
     if groupings.has_fields_fields(tracker_url, topology_id, cluster, environ):
@@ -238,8 +232,8 @@ def calc_current_inter_instance_rps(metrics_client: HeronMetricsClient,
         LOG.error(grouping_msg)
         raise NotImplementedError(grouping_msg)
 
-    isap: pd.DataFrame = calculate_ISAP(metrics_client, topology_id, start,
-                                        end, **kwargs)
+    isap: pd.DataFrame = calculate_ISAP(metrics_client, topology_id, cluster,
+                                        environ, start, end, **kwargs)
 
     # Remove system hearbeat streams
     isap = isap[~isap.source_component.str.contains("__")]
@@ -253,8 +247,8 @@ def calc_current_inter_instance_rps(metrics_client: HeronMetricsClient,
                              .mean()
                              .reset_index()
                              .rename(index=str,
-                                     columns={"ISAP" : "routing_probability",
-                                              "task" : "destination_task",
+                                     columns={"ISAP": "routing_probability",
+                                              "task": "destination_task",
                                               "component":
                                               "destination_component"}))
 
@@ -267,11 +261,11 @@ def calc_current_inter_instance_rps(metrics_client: HeronMetricsClient,
     for row in r_probs.itertuples():
         for source_task in comp_task_ids[row.source_component]:
             output.append({
-                "source_task" : source_task,
-                "source_component" : row.source_component,
-                "stream" : row.stream,
-                "destination_task" : row.destination_task,
-                "destination_component" : row.destination_component,
-                "routing_probability" : row.routing_probability})
+                "source_task": source_task,
+                "source_component": row.source_component,
+                "stream": row.stream,
+                "destination_task": row.destination_task,
+                "destination_component": row.destination_component,
+                "routing_probability": row.routing_probability})
 
     return pd.DataFrame(output)
