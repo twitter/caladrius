@@ -78,14 +78,15 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
                     metrics client object. Consult the documentation for the
                     specific metrics client beings used.
     Returns:
-        A DataFrame with the following columns:
-        task: Task ID integer
-        output_stream: The output stream name
-        input_stream: The input stream name
-        source_component: The name of the source component for the input stream
-        coefficient:    The value of the input amount coefficient for this
-                        output stream, inputs stream source component
-                        combination.
+        pandas.DataFrame:   A DataFrame with the following columns:
+
+        * task: Task ID integer.
+        * output_stream: The output stream name.
+        * input_stream: The input stream name.
+        * source_component: The name of the source component for the input
+          stream.
+        * coefficient: The value of the input amount coefficient for this
+          output stream, inputs stream source component combination.
     """
 
     LOG.info("Calculating instance input/output ratios using least squares "

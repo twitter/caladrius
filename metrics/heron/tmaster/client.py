@@ -755,7 +755,7 @@ class HeronTMasterClient(HeronMetricsClient):
             * task: The instance ID number for the instance that the metric
               comes from,
             * container:  The ID for the container this metric comes from,
-             stream: The name of the incoming stream from which the tuples
+              stream: The name of the incoming stream from which the tuples
               that lead to this metric came from,
             * latency_ms: The average execute latency measurement in
               milliseconds for that metric time period.
