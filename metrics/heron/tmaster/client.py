@@ -813,69 +813,6 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return output
 
-    def get_component_arrival_counts(self, topology_id: str, cluster: str,
-                                     environ: str, component_name: str,
-                                     start: int, end: int,
-                                     ) -> pd.DataFrame:
-        """ Gets the arrival counts, as a timeseries, for every instance of the
-        specified component of the specified topology. The start and end times
-        define the window over which to gather the metrics. The window duration
-        should be less then 3 hours as this is the limit of what the Topology
-        master stores.
-
-        Arguments:
-            topology_id (str):    The topology identification string.
-            cluster (str):  The cluster the topology is running in.
-            environ (str):  The environment the topology is running in (eg.
-                            prod, devel, test, etc).
-            component_name (str):   The name of the component whose metrics are
-                                    required.
-            start (int):    Start time for the time period the query is run
-                            against. This should be a UTC POSIX time integer
-                            (seconds since epoch).
-            end (int):  End time for the time period the query is run against.
-                        This should be a UTC POSIX time integer (seconds since
-                        epoch).
-
-        Returns:
-            pandas.DataFrame: A DataFrame containing the emit count
-            measurements as a timeseries. Each row represents a measurement
-            (aggregated over one minute) with the following columns:
-
-            * timestamp:The UTC timestamp for the metric time period,
-            * component: The component this metric comes from,
-            * task: The instance ID number for the instance that the metric
-              comes from,
-            * container: The ID for the container this metric comes from,
-            * stream: The name of the incoming stream from which the tuples
-              that lead to this metric came from,
-            * arrival_count: The arrival count in that metric time period.
-        """
-
-        LOG.info("Getting arrival count metrics for component %s of topology "
-                 "%s", component_name, topology_id)
-
-        metrics: List[str] = ["__gateway-received-packets-count"]
-
-        results: Dict[str, Any] = tracker.get_metrics_timeline(
-            self.tracker_url, cluster, environ, topology_id, component_name,
-            start, end, metrics)
-
-        output: pd.DataFrame = None
-
-        for stream_metric, instance_timelines in results["timeline"].items():
-
-            instance_tls_df: pd.DataFrame = instance_timelines_to_dataframe(
-                instance_timelines, None, "arrival_count",
-                lambda m: int(m))
-
-            if output is None:
-                output = instance_tls_df
-            else:
-                output = output.append(instance_tls_df, ignore_index=True)
-
-        return output
-
     def get_arrival_rates(self, topology_id: str, cluster: str, environ: str,
                           start: dt.datetime, end: dt.datetime,
                           **kwargs: Union[str, int, float]) -> pd.DataFrame:
@@ -905,49 +842,28 @@ class HeronTMasterClient(HeronMetricsClient):
             * task: The instance ID number for the instance that the metric
               comes from,
             * container: The ID for the container this metric comes from,
-            * stream: The name of the outing stream from which the tuples that
-              lead to this metric came from,
-            * arrival_rate_tps: The arrival rate in units of tuples per second.
+            * arrival_count: The number of arrivals (across all streams) at
+              each instance.
+            * arrival_rate_tps: The arrival rate at each instance (across all
+              streams) in units of tuples per second.
         """
         LOG.info("Getting arrival rates for topology %s over a %d second "
                  "period from %s to %s", topology_id,
                  (end-start).total_seconds(), start.isoformat(),
                  end.isoformat())
 
-        logical_plan, start_time, end_time = self._query_setup(
+        execute_counts: pd.DataFrame = self.get_execute_counts(
             topology_id, cluster, environ, start, end)
 
-        output: pd.DataFrame = None
+        arrivals: pd.DataFrame = \
+            (execute_counts.groupby(["task", "component", "timestamp"])
+             .sum().reset_index()
+             .rename(index=str, columns={"execute_count": "arrival_count"}))
 
-        for component in logical_plan["bolts"]:
+        arrivals["arrival_rate_tps"] = (arrivals["arrival_count"] /
+                                        DEFAULT_METRIC_PERIOD)
 
-            try:
-                comp_emit_counts: pd.DataFrame = \
-                        self.get_component_arrival_counts(
-                            topology_id, cluster, environ, component,
-                            start_time, end_time)
-            except HTTPError as http_error:
-                LOG.warning("Fetching arrival counts for component %s failed "
-                            "with status code %s", component,
-                            str(http_error.response.status_code))
-
-            if output is None:
-                output = comp_emit_counts
-            else:
-                output = output.append(comp_emit_counts, ignore_index=True)
-
-        if not output:
-            no_metric_err: str = \
-                ("Arrival rate metrics are not available. These are "
-                 "calculated from the '__gateway-received-packets-count' "
-                 "metric which is not recorded by default in the TMaster. "
-                 "To activate recording of this metric add it to the "
-                 "'tmaster-metrics-type:' list in the metrics-sinks.yaml "
-                 "configuration file.")
-            LOG.error(no_metric_err)
-            raise RuntimeError(no_metric_err)
-
-        return output
+        return arrivals
 
     def get_receive_counts(self, topology_id: str, cluster: str, environ: str,
                            start: dt.datetime, end: dt.datetime,
