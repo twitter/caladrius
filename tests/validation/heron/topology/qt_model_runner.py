@@ -14,6 +14,7 @@ import datetime as dt
 
 from typing import List, Tuple, Dict, Any
 
+import requests
 import pandas as pd
 
 from caladrius import loader, logs
@@ -29,7 +30,7 @@ LOG: logging.Logger = logging.getLogger(__name__)
 def compare(metrics_client: HeronMetricsClient,
             spout_state: Dict[int, Dict[str, float]],
             topology_model: QTTopologyModel,
-            topology_id: str, cluster: str, environ: str,  start: dt.datetime,
+            topology_id: str, cluster: str, environ: str, start: dt.datetime,
             end: dt.datetime, metric_bucket_length: int, **kwargs):
 
     # ## ARRIVAL RATES ##
@@ -40,7 +41,8 @@ def compare(metrics_client: HeronMetricsClient,
                                          end, **kwargs)
 
     actual_instance_arrs: pd.DataFrame = \
-        (actual_arrs.groupby("task")["arrival_rate_tps"].median().reset_index()
+        (actual_arrs.groupby(["component", "task"])["arrival_rate_tps"]
+         .mean().reset_index()
          .rename(index=str, columns={"arrival_rate_tps":
                                      "actual_arrival_rates_tps"}))
 
@@ -77,24 +79,34 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
 
     for i, (start, end) in enumerate(periods):
 
-        LOG.info("Comparing period %d of %d from %s to %s", i, len(periods),
-                 start.isoformat(), end.isoformat())
+        try:
+            LOG.info("Comparing period %d of %d from %s to %s", i,
+                     len(periods), start.isoformat(), end.isoformat())
 
-        spout_state = heron_helper.get_spout_state(
-            metrics_client, topology_id, cluster, environ,
-            config["heron.tracker.url"], start, end, 60, "median")
+            spout_state = heron_helper.get_spout_state(
+                metrics_client, topology_id, cluster, environ,
+                config["heron.tracker.url"], start, end, 60, "mean")
 
-        results: pd.DataFrame = compare(
-            metrics_client, spout_state, topology_model, topology_id, cluster,
-            environ, start, end, metric_bucket_length, **kwargs)
+            results: pd.DataFrame = compare(
+                metrics_client, spout_state, topology_model, topology_id,
+                cluster, environ, start, end, metric_bucket_length, **kwargs)
 
-        results["period_start"] = start
-        results["period_end"] = end
-
-        if output is not None:
-            output = output.append(results, ignore_index=True)
+        except ConnectionRefusedError as cr_err:
+            LOG.error("Connection was refused with message: %s", str(cr_err))
+        except ConnectionResetError as cre_err:
+            LOG.error("Connection was reset with message: %s", str(cre_err))
+        except requests.exceptions.ConnectionError as req_err:
+            LOG.error("Connection error with message: %s", str(req_err))
+        except Exception as err:
+            LOG.error("Error (%s) with message: %s", str(type(err)), str(err))
         else:
-            output = results
+            results["period_start"] = start
+            results["period_end"] = end
+
+            if output is not None:
+                output = output.append(results, ignore_index=True)
+            else:
+                output = results
 
     return output
 
@@ -167,4 +179,11 @@ if __name__ == "__main__":
 
     print(results.to_string())
 
+    print("\nError overall:\n")
     print(results.error.describe().to_string())
+
+    print("\nError per component:\n")
+    print(results.groupby("component").error.describe().to_string())
+
+    print("\nError per task:\n")
+    print(results.groupby("task").error.describe().to_string())

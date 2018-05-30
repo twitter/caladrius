@@ -230,10 +230,12 @@ if __name__ == "__main__":
 
     NO_CACHE_DIR: bool = False
     if not os.path.exists(ARGS.cache_dir):
+        LOG.info("No cached tracker information present")
         NO_CACHE_DIR = True
         os.makedirs(ARGS.cache_dir)
         LOG.info("Created cache directory at: %s", ARGS.cache_dir)
     elif len(os.listdir(ARGS.cache_dir)) < 1:
+        LOG.info("No cached tracker information present")
         # If the directory exists but there is nothing in it then we need to
         # load the tracker data
         NO_CACHE_DIR = True
