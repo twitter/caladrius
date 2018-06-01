@@ -2,7 +2,9 @@ import logging
 
 import datetime as dt
 
-from typing import Any, Dict
+from typing import Any, Dict, DefaultDict
+from functools import lru_cache
+from collections import defaultdict
 
 import pandas as pd
 
@@ -30,35 +32,61 @@ def get_spout_emissions(metric_client: HeronMetricsClient, tracker_url: str,
     return spout_emits
 
 
-def predict(spout_emits: pd.DataFrame, future_mins: int) -> pd.DataFrame:
+@lru_cache()
+def build_instance_models(metric_client: HeronMetricsClient, tracker_url: str,
+                          topology_id: str, cluster: str, environ: str,
+                          start: dt.datetime, end: dt.datetime
+                          ) -> Dict[str, Dict[int, Prophet]]:
 
-    spout_groups: pd.DataFrameGroupBy = \
+    spout_emits: pd.DataFrame = get_spout_emissions(
+        metric_client, tracker_url, topology_id, cluster, environ, start, end)
+
+    spout_groups: pd.core.groupby.DataFrameGroupBy = \
         (spout_emits[["component", "task", "timestamp", "emit_count"]]
          .groupby(["component", "task"]))
 
-    output: pd.DataFrame = None
+    output: DefaultDict[str, Dict[int, Prophet]] = defaultdict(dict)
 
     for (spout_comp, task), data in spout_groups:
         df: pd.DataFrame = (data[["timestamp", "emit_count"]]
                             .rename(index=str, columns={"timestamp": "ds",
                                                         "emit_count": "y"}))
 
-        # TODO: Move model build to separate LRU Cached method based on source
-        # time period variable
         model: Prophet = Prophet()
         model.fit(df)
-        future: pd.DataFrame = model.make_future_dataframe(periods=future_mins,
-                                                           freq='T')
-        forecast: pd.DataFrame = model.predict(future)
 
-        future_only: pd.DataFrame = forecast[forecast.ds > df.ds.max()]
+        output[spout_comp][task] = model
 
-        future_only["task"] = task
-        future_only["component"] = spout_comp
+    return dict(output)
 
-        if output is None:
-            output = future_only
-        else:
-            output.append(future_only)
 
-        return output
+def predict_per_instance(metric_client: HeronMetricsClient, tracker_url: str,
+                         topology_id: str, cluster: str, environ: str,
+                         start: dt.datetime, end: dt.datetime,
+                         future_mins: int) -> pd.DataFrame:
+
+    models: Dict[str, Dict[int, Prophet]] = build_instance_models(
+        metric_client, tracker_url, topology_id, cluster, environ, start, end)
+
+    output: pd.DataFrame = None
+
+    for spout_comp, instance_models in models.items():
+        for task, model in instance_models.items():
+
+            future: pd.DataFrame = model.make_future_dataframe(
+                periods=future_mins, freq='T')
+
+            forecast: pd.DataFrame = model.predict(future)
+
+            future_only: pd.DataFrame = forecast[forecast.ds >
+                                                 (model.start + model.t_scale)]
+
+            future_only["task"] = task
+            future_only["component"] = spout_comp
+
+            if output is None:
+                output = future_only
+            else:
+                output = output.append(future_only)
+
+    return output
