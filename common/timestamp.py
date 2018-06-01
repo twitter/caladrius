@@ -17,7 +17,7 @@ LOG: logging.Logger = logging.getLogger(__name__)
 
 
 def get_window_dt_from_now(seconds: int = 0, minutes: float = 0.0,
-                           hours: float = 0.0
+                           hours: float = 0.0, days: float = 0.0
                            ) -> Tuple[dt.datetime, dt.datetime]:
     """ Gets a (start datetime, end datetime) tuple where the end its now
     (UTC) and the start is calculated based on supplied arguments. Arguments
@@ -29,6 +29,7 @@ def get_window_dt_from_now(seconds: int = 0, minutes: float = 0.0,
         seconds(int):   The duration in whole seconds
         minutes (float): The duration in minutes (can be fractional)
         hours (float):  The duration in hours (can be fractional)
+        days (float):  The duration in days (can be fractional)
 
     Returns:
         Tuple[datetime, datetime]:  A (start, end) tuple where start and end
@@ -36,19 +37,19 @@ def get_window_dt_from_now(seconds: int = 0, minutes: float = 0.0,
 
     Raises:
         RuntimeError:   If none of the required arguments are supplied.
-
     """
 
-    if not any((seconds, minutes, hours)):
-        msg: str = ("At least one of the hours, minutes or seconds arguments "
-                    "should be supplied")
+    if not any((seconds, minutes, hours, days)):
+        msg: str = ("At least one of the days, hours, minutes or seconds "
+                    "arguments should be supplied")
         LOG.error(msg)
         raise RuntimeError(msg)
 
     # Set the end timestamp to be now
     end: dt.datetime = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
 
-    duration = dt.timedelta(seconds=seconds, minutes=minutes, hours=hours)
+    duration = dt.timedelta(seconds=seconds, minutes=minutes, hours=hours,
+                            days=days)
 
     start: dt.datetime = end - duration
 

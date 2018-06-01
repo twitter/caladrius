@@ -8,7 +8,7 @@ Storm](http://storm.apache.org/).
 
 ### Python
 
-Caladrius requires Python 3.5+, additional Python dependencies are listed in
+Caladrius requires Python 3.6, additional Python dependencies are listed in
 the Pipfile. Dependencies can be installed using
 [pipenv](https://docs.pipenv.org/) by running the following command in the
 caladrius root directory:
@@ -16,6 +16,15 @@ caladrius root directory:
     $ pipenv install 
 
 Add the `--dev` flag to the above command to install development dependencies.
+
+Caladrius should also be added to your `PYTHONPATH`. The best way to do this is
+by adding the folder above the Caladrius repo to the `PYTHONPATH` environment
+variable using a command like the one below:
+
+    $ export PYTHONPATH=$PYTHONPATH:<path/to/folder/above/caladrius>
+
+This line should be added to your `.profile` (or similar) start up script to
+preserve this across reboots.
 
 ### Graph Database
 

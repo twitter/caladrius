@@ -11,7 +11,5 @@
 # MyPy 
 *.mypy_cache/
 
-# Pyre
-.pyre_configuration
-.pyre/*
-
+# Analysis output files
+*.csv

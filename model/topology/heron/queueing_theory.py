@@ -9,7 +9,7 @@ import logging
 
 import datetime as dt
 
-from typing import Dict, Any, cast, Union, Tuple
+from typing import Dict, Any, cast, Tuple
 
 import pandas as pd
 
@@ -168,7 +168,8 @@ class QTTopologyModel(HeronTopologyModel):
         return combined
 
     def predict_proposed_performance(
-            self, topology_id: str, spout_traffic: Dict[int, Dict[str, float]],
+            self, topology_id: str, cluster: str, environ: str,
+            spout_traffic: Dict[int, Dict[str, float]],
             proposed_plan: Any, **kwargs: Any) -> Dict[str, Any]:
 
         prop_msg: str = ("Proposed physical plan performance modelling is not "

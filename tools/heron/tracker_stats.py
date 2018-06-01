@@ -78,8 +78,8 @@ def summarise_groupings(tracker_url: str,
 
 def add_pplan_info(tracker_url: str,
                    topologies: pd.DataFrame = None) -> pd.DataFrame:
-    """ Adds information from the physical plan to the topologies summary
-    DataFrame.
+    """ Combines information from the topology summary DataFrame with
+    information from the physical plan of each topology.
 
     Arguments:
         tracker_url (str):  The URL for the Heron Tracker API
@@ -134,7 +134,7 @@ def add_pplan_info(tracker_url: str,
                 except ValueError:
                     new_value = value
                 except TypeError:
-                    LOG.error("Value of key: %s was not a string or number it",
+                    LOG.error("Value of key: %s was not a string or number it"
                               " was a %s", key, str(type(value)))
 
                 row[new_key] = new_value
@@ -230,9 +230,15 @@ if __name__ == "__main__":
 
     NO_CACHE_DIR: bool = False
     if not os.path.exists(ARGS.cache_dir):
+        LOG.info("No cached tracker information present")
         NO_CACHE_DIR = True
         os.makedirs(ARGS.cache_dir)
         LOG.info("Created cache directory at: %s", ARGS.cache_dir)
+    elif len(os.listdir(ARGS.cache_dir)) < 1:
+        LOG.info("No cached tracker information present")
+        # If the directory exists but there is nothing in it then we need to
+        # load the tracker data
+        NO_CACHE_DIR = True
 
     CREATE_TIME_FILE: str = os.path.join(ARGS.cache_dir, "created.pkl")
     TOPO_FILE: str = os.path.join(ARGS.cache_dir, "topo.pkl")
@@ -277,18 +283,18 @@ if __name__ == "__main__":
         GROUPING_SUMMARY.to_pickle(GROUPING_SUMMARY_FILE)
 
         # Save a time stamp so we know how old the data is
-        now: dt.datetime = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+        NOW: dt.datetime = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
 
         with open(CREATE_TIME_FILE, 'wb') as time_file:
-            pickle.dump(now, time_file)
+            pickle.dump(NOW, time_file)
 
     else:
 
         with open(CREATE_TIME_FILE, 'rb') as time_file:
             timestamp: dt.datetime = pickle.load(time_file)
 
-        now = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-        duration: dt.timedelta = now - timestamp
+        NOW = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+        duration: dt.timedelta = NOW - timestamp
 
         LOG.info("Loading data that is %s hours old",
                  str(round(duration.total_seconds() / 3600, 2)))

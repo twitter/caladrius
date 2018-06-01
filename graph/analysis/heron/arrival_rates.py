@@ -196,14 +196,6 @@ def _calculate_arrivals(topo_traversal: GraphTraversalSource,
             edge_output: float = 0.0
         else:
 
-            if stream_output < 0:
-                print("-ve stream output")
-                import pdb; pdb.set_trace()
-
-            if r_prob < 0:
-                print("-ve routing probability")
-                import pdb; pdb.set_trace()
-
             edge_output = (stream_output * r_prob)
 
             LOG.debug("Output from %s-%d to %s-%d on stream %s is "
