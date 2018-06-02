@@ -7,11 +7,15 @@ modelling """
 
 import logging
 
-from typing import List, Dict, Type, Any
+from typing import List, Dict, Type, Any, Tuple
 
-from flask_restful import Resource, reqparse
+import pandas as pd
 
-from caladrius.model.traffic.base import TrafficModel
+from flask import request
+from flask_restful import Resource
+
+from caladrius.api import utils
+from caladrius.model.traffic.heron.base import HeronTrafficModel
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.utils.heron import graph_check
@@ -53,49 +57,86 @@ class HeronTraffic(Resource):
         self.tracker_url: str = tracker_url
         self.model_config: Dict[str, Any] = model_config
 
-        self.models: List[TrafficModel] = []
+        self.models: Dict[str, HeronTrafficModel] = {}
         for model_class in model_classes:
-            self.models.append(model_class(model_config, metrics_client,
-                                           graph_client))
+            self.models[model_class.name] = \
+                model_class(model_config, metrics_client, graph_client)
 
-        self.parser = reqparse.RequestParser()
-        self.parser.add_argument("cluster", type=str, required=True,
-                                 help="The name of the cluster the topology is"
-                                      " running in")
-        self.parser.add_argument("environ", type=str, required=True,
-                                 help="The name of the environment the "
-                                      "topology is running in")
-        self.parser.add_argument("source_hours", type=float, required=False,
-                                 help=("The number of hours of historical "
-                                       "metrics data to use in the traffic "
-                                       "prediction"))
         super().__init__()
 
-    def get(self, topology_id: str) -> Dict[str, Any]:
+    def get(self, topology_id: str) -> Tuple[Dict[str, Any], int]:
 
-        request_args = self.parser.parse_args()
+        # Make sure we have the args we need
+        errors: List[Dict[str, str]] = []
+        if "cluster" not in request.args:
+            errors.append({"type": "MissingParameter",
+                           "error": "'cluster' parameter should be supplied"})
 
-        LOG.info("Traffic prediction requested for Heron topology: %s",
-                 topology_id)
+        if "environ" not in request.args:
+            errors.append({"type": "MissingParameter",
+                           "error": "'environ' parameter should be supplied"})
+
+        if "model" not in request.args:
+            errors.append({"type": "MissingParameter",
+                           "error": ("At least one 'model' parameter should "
+                                     "be supplied. Supply 'all' to run all "
+                                     "configured models")})
+
+        # Return useful errors to the client if any parameters are missing
+        if errors:
+            return {"errors": errors}, 400
+
+        LOG.info("Traffic prediction requested for Heron topology: %s on "
+                 "cluster: %s in environment: %s", topology_id,
+                 request.args["cluster"], request.args["environ"])
 
         # Make sure we have a current graph representing the physical plan for
         # the topology
         graph_check(self.graph_client, self.model_config, self.tracker_url,
-                    request_args["cluster"], request_args["environ"],
+                    request.args["cluster"], request.args["environ"],
                     topology_id)
 
         output: Dict[str, Any] = {}
         output["errors"] = {}
         output["results"] = {}
 
-        for model in self.models:
-            LOG.info("Running traffic prediction model %s for topology %s ",
-                     model.name, topology_id)
+        if "all" in request.args.getlist("model"):
+            LOG.info("Running all configured Heron traffic performance models")
+            models = self.models.keys()
+        else:
+            models = request.args.getlist("model")
+
+        # Convert the request.args to a dict suitable for passing as **kwargs
+        model_kwargs: Dict[str, Any] = \
+            utils.convert_wimd_to_dict(request.args)
+
+        # Remove the models list from the kwargs as it is only needed by this
+        # method
+        model_kwargs.pop("model")
+
+        output = {}
+        for model_name in models:
+            LOG.info("Running traffic performance model %s", model_name)
+
+            model: HeronTrafficModel = self.models[model_name]
+
             try:
-                output["results"][model.name] = \
-                    model.predict_traffic(topology_id, **request_args)
+                results: pd.DataFrame = model.predict_traffic(
+                    topology_id=topology_id,
+                    cluster=request.args.get("cluster"),
+                    environ=request.args.get("environ"),
+                    **model_kwargs)
             except Exception as err:
-                output["errors"][model.name] = \
-                    str(type(err)).split("'")[1] + " : " + str(err)
+                LOG.error("Error running model: %s -> %s", model.name,
+                          str(err))
+                errors.append({"model": model.name, "type": str(type(err)),
+                               "error": str(err)})
+            else:
+                output[model_name] = results.to_json(orient="records")
+
+        if errors:
+            return {"errors": errors}, 500
+
+        return output, 200
 
         return output
