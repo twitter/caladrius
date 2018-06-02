@@ -28,7 +28,7 @@ class StatsSummaryTrafficModel(HeronTrafficModel):
     """ This model provides summary statistics for the spout instances emit
     metrics (traffic)."""
 
-    name: str = "stats_summary_traffic_model"
+    name: str = "stats_summary"
 
     description: str = ("Provides summary traffic statistics for the "
                         "specified topology. Statistics are based on emit "
@@ -107,8 +107,8 @@ class StatsSummaryTrafficModel(HeronTrafficModel):
                         "using default value of %d hours",
                         self.default_source_hours)
             source_hours: int = self.default_source_hours
-
-        source_hours = cast(int, kwargs["source_hours"])
+        else:
+            source_hours = cast(int, kwargs["source_hours"])
 
         LOG.info("Predicting traffic for topology %s using statistics summary "
                  "model", topology_id)
