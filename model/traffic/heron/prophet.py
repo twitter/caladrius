@@ -10,8 +10,7 @@ import logging
 
 import datetime as dt
 
-from typing import Any, Dict, DefaultDict, Union, cast, List
-from functools import lru_cache
+from typing import Any, Dict, DefaultDict, Union, cast, List, Optional
 from collections import defaultdict
 from copy import deepcopy
 
@@ -25,6 +24,8 @@ from caladrius.model.traffic.heron.base import HeronTrafficModel
 from caladrius.graph.gremlin.client import GremlinClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
+
+INSTANCE_MODELS = DefaultDict[str, DefaultDict[int, Dict[str, Prophet]]]
 
 
 def get_spout_emissions(metric_client: HeronMetricsClient, tracker_url: str,
@@ -43,20 +44,27 @@ def get_spout_emissions(metric_client: HeronMetricsClient, tracker_url: str,
     return spout_emits
 
 
-@lru_cache()
 def build_component_models(
         metric_client: HeronMetricsClient, tracker_url: str, topology_id: str,
-        cluster: str, environ: str, start: dt.datetime, end: dt.datetime
+        cluster: str, environ: str, start: dt.datetime, end: dt.datetime,
+        spout_emits: Optional[pd.DataFrame]=None
         ) -> DefaultDict[str, Dict[str, Prophet]]:
 
     LOG.info("Creating traffic models for spout components of topology %s",
              topology_id)
 
-    spout_instance_emits: pd.DataFrame = get_spout_emissions(
-        metric_client, tracker_url, topology_id, cluster, environ, start, end)
+    if start and end and not spout_emits:
+        spout_emits = get_spout_emissions(metric_client, tracker_url,
+                                          topology_id, cluster, environ, start,
+                                          end)
+    elif not start and not end and not spout_emits:
+        err: str = ("Either start and end datetime instances or the spout "
+                    "emits should be provided")
+        LOG.error(err)
+        raise RuntimeError(err)
 
     spout_comp_emits: pd.DataFrame = \
-        (spout_instance_emits.groupby(["component", "stream", "timestamp"])
+        (spout_emits.groupby(["component", "stream", "timestamp"])
          .mean()["emit_count"].reset_index())
 
     output: DefaultDict[str, Dict[str, Prophet]] = defaultdict(dict)
@@ -78,22 +86,65 @@ def build_component_models(
     return output
 
 
-@lru_cache()
+def predict_per_component(metric_client: HeronMetricsClient, tracker_url: str,
+                          topology_id: str, cluster: str, environ: str,
+                          start: dt.datetime, end: dt.datetime,
+                          future_mins: int) -> pd.DataFrame:
+
+    models: DefaultDict[str, Dict[str, Prophet]] = \
+        build_component_models(metric_client, tracker_url, topology_id,
+                               cluster, environ, start, end)
+
+    output: pd.DataFrame = None
+
+    for spout_comp, stream_models in models.items():
+        for stream, model in stream_models.items():
+
+            future: pd.DataFrame = model.make_future_dataframe(
+                periods=future_mins, freq='T', include_history=False)
+
+            forecast: pd.DataFrame = model.predict(future)
+
+            forecast["stream"] = stream
+            forecast["component"] = spout_comp
+
+            if output is None:
+                output = forecast
+            else:
+                output = output.append(forecast)
+
+    return output
+
+
 def build_instance_models(
         metric_client: HeronMetricsClient, tracker_url: str, topology_id: str,
-        cluster: str, environ: str, start: dt.datetime, end: dt.datetime
-        ) -> DefaultDict[str, DefaultDict[int, Dict[str, Prophet]]]:
+        cluster: str, environ: str, start: Optional[dt.datetime] = None,
+        end: Optional[dt.datetime] = None,
+        spout_emits: Optional[pd.DataFrame] = None) -> INSTANCE_MODELS:
 
-    spout_emits: pd.DataFrame = get_spout_emissions(
-        metric_client, tracker_url, topology_id, cluster, environ, start, end)
+    if start and end and spout_emits is None:
+        spout_emits = get_spout_emissions(metric_client, tracker_url,
+                                          topology_id, cluster, environ, start,
+                                          end)
+    elif spout_emits is None and ((not start and end) or (start and not end)):
+        err: str = ("Both start and end datetimes should be provided if spout "
+                    "emits DataFrame is not")
+        LOG.error(err)
+        raise RuntimeError(err)
+    elif spout_emits is None and not start and not end:
+        err = ("Either start and end datetimes or the spout emits should be "
+               "provided")
+        LOG.error(err)
+        raise RuntimeError(err)
+    else:
+        spout_emits = cast(pd.DataFrame, spout_emits)
 
     spout_groups: pd.core.groupby.DataFrameGroupBy = \
-        (spout_emits[["component", "task", "stream",  "timestamp",
+        (spout_emits[["component", "task", "stream", "timestamp",
                       "emit_count"]]
          .groupby(["component", "task", "stream"]))
 
-    output: DefaultDict[str, DefaultDict[int, Dict[str, Prophet]]] = \
-        defaultdict(lambda: defaultdict(dict))
+    output: INSTANCE_MODELS = defaultdict(lambda: defaultdict(dict))
 
     for (spout_comp, task, stream), data in spout_groups:
         df: pd.DataFrame = (data[["timestamp", "emit_count"]]
@@ -108,14 +159,8 @@ def build_instance_models(
     return output
 
 
-def predict_per_instance(metric_client: HeronMetricsClient, tracker_url: str,
-                         topology_id: str, cluster: str, environ: str,
-                         start: dt.datetime, end: dt.datetime,
-                         future_mins: int) -> pd.DataFrame:
-
-    models: DefaultDict[str, DefaultDict[int, Dict[str, Prophet]]] = \
-        build_instance_models(metric_client, tracker_url, topology_id, cluster,
-                              environ, start, end)
+def run_per_instance_models(models: INSTANCE_MODELS,
+                            future_mins: int) -> pd.DataFrame:
 
     output: pd.DataFrame = None
 
@@ -124,23 +169,32 @@ def predict_per_instance(metric_client: HeronMetricsClient, tracker_url: str,
             for stream, model in stream_models.items():
 
                 future: pd.DataFrame = model.make_future_dataframe(
-                    periods=future_mins, freq='T')
+                    periods=future_mins, freq='T', include_history=False)
 
                 forecast: pd.DataFrame = model.predict(future)
 
-                future_only: pd.DataFrame = deepcopy(
-                    forecast[forecast.ds > (model.start + model.t_scale)])
-
-                future_only["stream"] = stream
-                future_only["task"] = task
-                future_only["component"] = spout_comp
+                forecast["stream"] = stream
+                forecast["task"] = task
+                forecast["component"] = spout_comp
 
                 if output is None:
-                    output = future_only
+                    output = forecast
                 else:
-                    output = output.append(future_only)
+                    output = output.append(forecast)
 
     return output
+
+
+def predict_per_instance(metric_client: HeronMetricsClient, tracker_url: str,
+                         topology_id: str, cluster: str, environ: str,
+                         start: dt.datetime, end: dt.datetime,
+                         future_mins: int) -> pd.DataFrame:
+
+    models = build_instance_models(metric_client, tracker_url, topology_id,
+                                   cluster, environ, start, end)
+
+    return run_per_instance_models(models, future_mins)
+
 
 
 class ProphetTrafficModel(HeronTrafficModel):
@@ -248,14 +302,49 @@ class ProphetTrafficModel(HeronTrafficModel):
             LOG.error(sample_period_err)
             raise NotImplementedError(sample_period_err)
 
-        traffic: pd.DataFrame = predict_per_instance(
+        output: Dict[str, Any] = {}
+
+        # Per component predictions
+
+        component_traffic: pd.DataFrame = predict_per_instance(
+            self.metrics_client, self.tracker_url, topology_id, cluster,
+            environ, source_start, source_end, future_mins)
+
+        traffic_by_component: pd.core.groupby.DataFrameGroupBy = \
+            component_traffic.groupby(["component", "stream"])
+
+        components: DefaultDict[str, DefaultDict[str, Dict[str, float]]] = \
+            defaultdict(lambda: defaultdict(dict))
+
+        for (spout_component, stream), data in traffic_by_component:
+
+            components["mean"][spout_component][stream] = \
+                (float(data.yhat.mean()) / time_period_sec)
+
+            components["median"][spout_component][stream] = \
+                (float(data.yhat.median()) / time_period_sec)
+
+            components["max"][spout_component][stream] = \
+                (float(data.yhat.max()) / time_period_sec)
+
+            components["min"][spout_component][stream] = \
+                (float(data.yhat.min()) / time_period_sec)
+
+            for quantile in self.quantiles:
+                components[f"{quantile}-quantile"][spout_component][stream] = \
+                    (float(data.yhat.quantile(quantile/100)) /
+                     time_period_sec)
+
+        output["components"] = components
+
+        # Per instance predictions
+
+        instance_traffic: pd.DataFrame = predict_per_instance(
             self.metrics_client, self.tracker_url, topology_id, cluster,
             environ, source_start, source_end, future_mins)
 
         traffic_by_task: pd.core.groupby.DataFrameGroupBy = \
-            traffic.groupby(["task", "stream"])
-
-        output: Dict[str, Any] = {}
+            instance_traffic.groupby(["task", "stream"])
 
         instances: DefaultDict[str, DefaultDict[str, Dict[str, float]]] = \
             defaultdict(lambda: defaultdict(dict))
