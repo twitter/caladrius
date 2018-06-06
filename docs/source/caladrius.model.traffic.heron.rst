@@ -12,6 +12,14 @@ caladrius.model.traffic.heron.base module
     :undoc-members:
     :show-inheritance:
 
+caladrius.model.traffic.heron.prophet module
+--------------------------------------------
+
+.. automodule:: caladrius.model.traffic.heron.prophet
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 caladrius.model.traffic.heron.stats\_summary module
 ---------------------------------------------------
 

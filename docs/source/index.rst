@@ -30,10 +30,13 @@ Summary
 -------
 
 Caladrius provides a framework to analyse, model and predict the various
-aspects of these systems and focuses on two key areas:
+aspects of DSPS systems (like Apache Heron and Storm) and focuses on two key
+areas:
 
 **Traffic**:
-    The prediction of incoming workload into a DSPS topology. Caladrius provides metrics database interfaces and methods for analysing traffic into a topology and predicting future traffic levels.
+    The prediction of incoming workload into a DSPS topology. Caladrius
+    provides metrics database interfaces and methods for analysing traffic into
+    a topology and predicting future traffic levels.
 
 **Performance**:
     Predicting how a topology will perform under a given traffic load and for
@@ -45,7 +48,8 @@ aspects of these systems and focuses on two key areas:
         level if it keeps its current layout.
 
     *Proposed*:
-        The prediction of how a topology will perform under the current (or a future) traffic level when its layout is changed.
+        The prediction of how a topology will perform under the current (or
+        a future) traffic level when its layout is changed.
 
 
 Table of contents
@@ -55,6 +59,8 @@ Table of contents
     :maxdepth: 3
     
     background
+    contributing
+    graph_database
     rest_api
     roadmap
     API Documentation <modules>
