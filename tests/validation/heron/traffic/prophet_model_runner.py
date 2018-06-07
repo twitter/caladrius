@@ -50,12 +50,17 @@ def validate_topology(metrics_client: HeronMetricsClient, tracker_url: str,
             spout_emit_counts[(spout_emit_counts.timestamp >= model_start) &
                               (spout_emit_counts.timestamp <= source_end)]
 
-        # Build instance models for each instance using source data of the
-        # current duration
-        instance_models: prophet.INSTANCE_MODELS = \
-            prophet.build_instance_models(
-                metrics_client, tracker_url, topology_id, cluster, environ,
-                spout_emits=model_emits)
+        try:
+            # Build instance models for each instance using source data of the
+            # current duration
+            instance_models: prophet.INSTANCE_MODELS = \
+                prophet.build_instance_models(
+                    metrics_client, tracker_url, topology_id, cluster, environ,
+                    spout_emits=model_emits)
+        except Exception as err:
+            LOG.error("Error creating models for topology %s, source duration "
+                      "%f: %s", topology_id, source_duration, str(err))
+            continue
 
         for future_duration in future_mins_list:
             # Now use the models created from the current source duration and
@@ -64,9 +69,15 @@ def validate_topology(metrics_client: HeronMetricsClient, tracker_url: str,
             LOG.info("Predicting traffic %d minutes into the future",
                      future_duration)
 
-            prediction: pd.DataFrame = prophet.run_per_instance_models(
-                instance_models, future_duration).rename(
-                    index=str, columns={"ds": "timestamp"})
+            try:
+                prediction: pd.DataFrame = prophet.run_per_instance_models(
+                    instance_models, future_duration).rename(
+                        index=str, columns={"ds": "timestamp"})
+            except Exception as err:
+                LOG.error("Error forecasting %d mins ahead for topology %s "
+                          "using source duration %f: %s", future_duration,
+                          topology_id, source_duration, str(err))
+                continue
 
             validation_end: dt.datetime = \
                 source_end + dt.timedelta(minutes=future_duration)
@@ -77,6 +88,10 @@ def validate_topology(metrics_client: HeronMetricsClient, tracker_url: str,
 
             combined = actual.merge(prediction, on=["timestamp", "component",
                                                     "task", "stream"])
+
+            # To avoid inf values we have to remove all rows where emit count
+            # is zero
+            combined = combined[combined.emit_count > 0]
 
             combined["residual"] = combined["yhat"] - combined["emit_count"]
             combined["sq_residual"] = (combined["residual"] *
@@ -127,17 +142,18 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
 
     topologies: pd.DataFrame = tracker.get_topologies(tracker_url)
 
-    total_topos: int = int(topologies.topology.count())
-
     output: pd.DataFrame = None
 
     if not topology_ids:
         LOG.info("Validating all topologies registered with the Heron Tracker")
         topology_rows = topologies.itertuples()
+        total_topos: int = int(topologies.topology.count())
     else:
         LOG.info("Validating topologies: %s", str(topology_ids))
-        topology_rows = \
-            topologies[topologies["topology"].isin(topology_ids)].itertuples()
+        topos = \
+            topologies[topologies["topology"].isin(topology_ids)]
+        total_topos = int(topos.topology.count())
+        topology_rows = topos.itertuples()
 
     for i, row in enumerate(topology_rows):
 
@@ -186,7 +202,8 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
                 results["user"] = row.user
 
                 save_path: str = os.path.join(
-                    output_dir, f"{row.topology}_prophet_errors.csv")
+                    output_dir, (f"{row.topology}_{row.cluster}_{row.environ}"
+                                 f"_prophet_errors.csv"))
                 LOG.info("Saving results to: %s", save_path)
                 results.to_csv(save_path)
 
