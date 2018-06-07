@@ -1,8 +1,11 @@
 # Caladrius
 
-Performance modelling system for Distributed Stream Processing Systems (DSPS)
+Performance modelling for Distributed Stream Processing Systems (DSPS)
 such as [Apache Heron](https://apache.github.io/incubator-heron/) and [Apache
 Storm](http://storm.apache.org/).
+
+Full details can be found on the [documentation
+site](http://caladrius.readthedocs.io/).
 
 ## Setup
 
@@ -78,7 +81,8 @@ Additional command line arguments are available via:
 
 ## Documentation
 
-Documentation for stable releases is hosted on [ReadTheDocs]().
+Documentation for stable releases is hosted on
+[ReadTheDocs](http://caladrius.readthedocs.io/).
 
 If you want to build the latest documentation then this can be done using
 [Sphinx](http://www.sphinx-doc.org/en/master/index.html). Assuming you have
