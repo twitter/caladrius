@@ -1,0 +1,15 @@
+# Vim temp files
+*.swp
+*.swo
+
+# Python Files
+*.pyc
+
+# Mac stuff
+*DS_Store
+
+# MyPy 
+*.mypy_cache/
+
+# Analysis output files
+*.csv
