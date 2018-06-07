@@ -97,6 +97,7 @@ def calculate_inter_instance_rps(metrics_client: HeronMetricsClient,
                           "destination_component", "destination_task",
                           "routing_probability"]]
 
+
 def calculate_ISAP(metrics_client: HeronMetricsClient, topology_id: str,
                    cluster: str, environ: str, start: dt.datetime,
                    end: dt.datetime, **kwargs: Union[str, int, float]
@@ -163,12 +164,11 @@ def calculate_ISAP(metrics_client: HeronMetricsClient, topology_id: str,
 
     return ex_counts_totals
 
-def calc_current_inter_instance_rps(metrics_client: HeronMetricsClient,
-                                    topology_id: str, cluster: str,
-                                    environ: str, start: dt.datetime,
-                                    end: dt.datetime, tracker_url: str,
-                                    **kwargs: Union[str, int, float]
-                                    ) -> pd.DataFrame:
+
+def calc_current_inter_instance_rps(
+    metrics_client: HeronMetricsClient, topology_id: str, cluster: str,
+    environ: str, start: dt.datetime, end: dt.datetime, tracker_url: str,
+    **kwargs: Union[str, int, float]) -> pd.DataFrame:
     """ Get a DataFrame with the instance to instance routing probabilities for
     each source instance's output streams from a currently running topology.
     This method uses several assumptions to infer the routing probabilities
