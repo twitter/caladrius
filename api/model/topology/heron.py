@@ -104,6 +104,8 @@ class HeronCurrent(Resource):
         traffic: Dict[int, Dict[str, float]] = \
             {int(key): value for key, value in json_traffic.items()}
 
+        print(traffic)
+
         if "all" in request.args.getlist("model"):
             LOG.info("Running all configured Heron topology performance "
                      "models")
@@ -137,7 +139,7 @@ class HeronCurrent(Resource):
                 errors.append({"model": model.name, "type": str(type(err)),
                                "error": str(err)})
             else:
-                output[model_name] = results.to_json(orient="records")
+                output[model_name] = results
 
         if errors:
             return {"errors": errors}, 500

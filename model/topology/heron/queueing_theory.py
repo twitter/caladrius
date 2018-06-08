@@ -30,7 +30,7 @@ class QTTopologyModel(HeronTopologyModel):
     of arrival rates and service times to check QT model validity.
     """
 
-    name: str = "queuing_theory_topology_model"
+    name: str = "queueing_theory"
 
     description: str = ("Models the topology as a queuing network and flags "
                         "if back pressure is likely at instances.")
