@@ -165,6 +165,9 @@ def _calculate_arrivals(topo_traversal: GraphTraversalSource,
          .by(inV().properties("component").value())
          .toList())
 
+    if not out_edges:
+        return arrival_rates
+
     source_task: int = cast(int, out_edges[0]["source_task"])
     source_component: str = cast(str, out_edges[0]["source_component"])
 
