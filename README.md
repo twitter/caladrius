@@ -7,6 +7,11 @@ Storm](http://storm.apache.org/).
 Full details can be found on the [documentation
 site](http://caladrius.readthedocs.io/).
 
+**NOTE**: Caladrius is a prototype project, which is the result of a 3 month
+internship with Twitter's Real Time Compute Team. It should be considered alpha
+level software. All contributions are welcome, please see the contributing page
+on the documentation website for more details.
+
 ## Setup
 
 ### Python

@@ -43,7 +43,7 @@ class StatsSummaryTrafficModel(HeronTrafficModel):
 
         if "stats.summary.model.default.source.hours" in config:
 
-            self.default_source_hours: int = \
+            self.default_source_hours: float = \
                 config["stats.summary.model.default.source.hours"]
 
         else:
@@ -106,9 +106,9 @@ class StatsSummaryTrafficModel(HeronTrafficModel):
                         "historical data to summarise) was not provided, "
                         "using default value of %d hours",
                         self.default_source_hours)
-            source_hours: int = self.default_source_hours
+            source_hours: float = self.default_source_hours
         else:
-            source_hours = cast(int, kwargs["source_hours"])
+            source_hours = cast(float, float(kwargs["source_hours"]))
 
         LOG.info("Predicting traffic for topology %s using statistics summary "
                  "model", topology_id)
@@ -128,8 +128,8 @@ class StatsSummaryTrafficModel(HeronTrafficModel):
             emit_counts["component"].isin(spout_comps)]
 
         if "metrics_sample_period" in kwargs:
-            time_period_sec: float = cast(float,
-                                          kwargs["metrics_sample_period"])
+            time_period_sec: float = \
+                cast(float, float(kwargs["metrics_sample_period"]))
         else:
             # TODO: This method needs to be made robust, interleaved unique
             # timestamps will return entirely the wrong period!!!

@@ -67,7 +67,7 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
     last_updated: dt.datetime = zookeeper.last_topo_update_ts(
         zk_config["heron.statemgr.connection.string"],
         zk_config["heron.statemgr.root.path"], topology_id,
-        zk_config["zk.time.offset"])
+        zk_config["zk.time.offset"]).astimezone(dt.timezone.utc)
 
     if start < last_updated:
         update_err: str = (f"The provided total hours ({total_hours}) will "
@@ -85,7 +85,7 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
     output: pd.DataFrame = None
 
     for i, (source_start, source_end) in enumerate(periods):
-        LOG.info("\n\n\nComparing period %d of %d\n\n", i, len(periods))
+        LOG.info("\n\n\nComparing period %d of %d\n\n", i+1, len(periods))
         LOG.info("Using metrics sourced from %s to %s",
                  source_start.isoformat(), source_end.isoformat())
 
@@ -137,6 +137,7 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
             except Exception as err:
                 LOG.error("Error (%s) with message: %s", str(type(err)),
                           str(err))
+                raise err
             else:
                 results["source_start"] = source_start
                 results["source_end"] = source_end
@@ -221,7 +222,13 @@ if __name__ == "__main__":
         int(CONFIG["heron.topology.models.config"]["metric.bucket.length"]))
 
     if ARGS.output_dir:
-        results.to_csv(os.path.join(ARGS.output_dir, "arrival_rates.csv"))
+
+        if not os.path.exists(ARGS.output_dir):
+            os.makedirs(ARGS.output_dir)
+
+        results.to_csv(os.path.join(ARGS.output_dir,
+                                    (f"{ARGS.topology}_{ARGS.cluster}_"
+                                     f"{ARGS.environ}_arrival_rates.csv")))
 
     print("\n#### ARRIVAL RATE VALIDATION ####\n")
 
