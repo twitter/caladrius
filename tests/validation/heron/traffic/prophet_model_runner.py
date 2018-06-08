@@ -1,3 +1,10 @@
+# Copyright 2018 Twitter, Inc.
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
+""" This module contains methods for validating the performance predictions of
+the Caladrius Heron prophet traffic forecasting model."""
+
 import os
 import sys
 import argparse
@@ -6,7 +13,7 @@ import math
 
 import datetime as dt
 
-from typing import Dict, Any, Tuple, List, Union, DefaultDict
+from typing import Dict, Any, Tuple, List, Union
 
 import pandas as pd
 

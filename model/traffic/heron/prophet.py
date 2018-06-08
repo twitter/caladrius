@@ -231,7 +231,7 @@ class ProphetTrafficModel(HeronTrafficModel):
 
         if "prophet.model.default.source.hours" in config:
 
-            self.default_source_hours: int = \
+            self.default_source_hours: float = \
                 config["prophet.model.default.source.hours"]
 
         else:
@@ -266,9 +266,9 @@ class ProphetTrafficModel(HeronTrafficModel):
                         "historical data to summarise) was not provided, "
                         "using default value of %d hours",
                         self.default_source_hours)
-            source_hours: int = self.default_source_hours
+            source_hours: float = self.default_source_hours
         else:
-            source_hours = cast(int, kwargs["source_hours"])
+            source_hours = cast(float, float(kwargs["source_hours"]))
 
         source_end: dt.datetime = \
             dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
@@ -282,7 +282,7 @@ class ProphetTrafficModel(HeronTrafficModel):
                         self.default_future_mins)
             future_mins: int = self.default_future_mins
         else:
-            future_mins = cast(int, kwargs["future_mins"])
+            future_mins = cast(int, int(kwargs["future_mins"]))
 
         LOG.info("Predicting traffic over the next %d minutes for topology %s "
                  "using a Prophet model trained on metrics from a %f hour "
@@ -291,8 +291,8 @@ class ProphetTrafficModel(HeronTrafficModel):
                  source_start.isoformat(), source_end.isoformat())
 
         if "metrics_sample_period" in kwargs:
-            time_period_sec: float = cast(float,
-                                          kwargs["metrics_sample_period"])
+            time_period_sec: float = \
+                cast(float, float(kwargs["metrics_sample_period"]))
         else:
             sample_period_err: str = \
                 ("Inferring metric sample period is not yet supported. Please "
