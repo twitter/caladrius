@@ -23,6 +23,12 @@ LOG: logging.Logger = logging.getLogger(__name__)
 
 
 class QTTopologyModel(HeronTopologyModel):
+    """ This model implementation predict topology performance using queueing
+    theory.
+
+    NOTE: This is very much a work in progress and so far only does comparisons
+    of arrival rates and service times to check QT model validity.
+    """
 
     name: str = "queuing_theory_topology_model"
 
