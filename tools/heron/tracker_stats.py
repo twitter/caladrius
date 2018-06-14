@@ -144,6 +144,9 @@ def add_pplan_info(tracker_url: str,
             row["instances_per_container_dist"] = \
                 [len(pplan["stmgrs"][stmgr]["instance_ids"])
                  for stmgr in pplan["stmgrs"]]
+            row["total_bolts"] = len(pplan["bolts"])
+            row["total_spouts"] = len(pplan["spouts"])
+            row["total_components"] = len(pplan["bolts"]) + len(pplan["spouts"])
 
             output.append(row)
 
@@ -419,6 +422,20 @@ if __name__ == "__main__":
         output.extend(dist)
     print(pd.Series(output).describe(percentiles=PERCENTILES).to_string(),
           file=OUT_FILE)
+
+    print("\n-------------------", file=OUT_FILE)
+    print("Component stats:\n", file=OUT_FILE)
+
+    print("\nStatistics for total number of components per topology:\n",
+          file=OUT_FILE)
+    print(TOPO_PPLAN.total_components.describe(
+        percentiles=PERCENTILES).to_string(), file=OUT_FILE)
+
+    print("\nTop 20 Largest topologies by component count:\n", file=OUT_FILE)
+    print(TOPO_PPLAN.sort_values(by="total_components", ascending=False)
+          [["topology", "cluster", "environ", "user", "total_components",
+            "stmgrs", "total_spouts", "total_bolts", "total_instances"]]
+          .head(20).to_string(index=False), file=OUT_FILE)
 
     print("\n-------------------", file=OUT_FILE)
     print("Message guarantee stats:\n", file=OUT_FILE)
