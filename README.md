@@ -34,6 +34,15 @@ variable using a command like the one below:
 This line should be added to your `.profile` (or similar) start up script to
 preserve this across reboots.
 
+####Troubleshooting
+Errors such as the following entail that the PYTHONPATH is not set correctly. 
+
+    File "app.py", line 15, in <module>
+        from caladrius import logs
+        
+Another way to ensure that `pipenv` is able to read the environment variables
+is to create a `.env` file in the project directory and add the `PYTHONPATH` there.        
+
 ### Graph Database
 
 Caladrius requires a [Gremlin
@@ -110,3 +119,21 @@ directory.
 If you spot any security or other sensitive issues with the software please
 report them via the [Twitter HackerOne](https://hackerone.com/twitter) bug
 bounty program.
+
+## Using the API
+The software provides multiple endpoints for a user to find out how different
+packing plans will perform for a single topology. Here, we provide examples of how to 
+call the APIs from the command-line.
+
+### Heron Current API
+In this example, the WindowedWordCountTopoology has three components (spouts -> bolt -> bolt).
+Each operator in the job has one running task/instance only.
+
+    curl -H 'Content-Type: application/json' -d '{ "1" : {"default": 101.4}, "2": {"default": 104.3}, "3" : {"default" : 101.5}  }'  
+    -X POST "<Caladrius URL>:5000/model/topology/heron/current/WindowedWordCountTopology?cluster=smf1&environ=test&model=queueing_theory&source_hours=2"
+    
+Caveat: Caladrius currently does not support calculations for topologies that have only two levels. This is because
+a topology with two levels consists of spouts (with only outgoing streams) and sink bolts (with possibly only incoming
+streams). Some of Caladrius' calculations such as measuring the input to output tuple ratios cannot be applied 
+to such operators.
+
