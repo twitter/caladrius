@@ -120,6 +120,11 @@ class HeronCurrent(Resource):
         # Remove the models list from the kwargs as it is only needed by this
         # method
         model_kwargs.pop("model")
+        model_kwargs.pop("cluster")
+        model_kwargs.pop("environ")
+
+        cluster = request.args.get("cluster")
+        environ = request.args.get("environ")
 
         output = {}
         for model_name in models:
@@ -130,8 +135,8 @@ class HeronCurrent(Resource):
             try:
                 results: pd.DataFrame = model.predict_current_performance(
                     topology_id=topology_id,
-                    cluster=request.args.get("cluster"),
-                    environ=request.args.get("environ"),
+                    cluster=cluster,
+                    environ=environ,
                     spout_traffic=traffic, **model_kwargs)
             except Exception as err:
                 LOG.error("Error running model: %s -> %s", model.name,
@@ -139,7 +144,7 @@ class HeronCurrent(Resource):
                 errors.append({"model": model.name, "type": str(type(err)),
                                "error": str(err)})
             else:
-                output[model_name] = results
+                output[model_name] = results.to_json()
 
         if errors:
             return {"errors": errors}, 500
