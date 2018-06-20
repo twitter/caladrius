@@ -41,14 +41,14 @@ def validate_topology(metrics_client: HeronMetricsClient, tracker_url: str,
         metrics_start, metrics_end)
 
     source_end: dt.datetime = (metrics_end -
-                               dt.timedelta(minutes=max(future_mins_list)))
+                               dt.timedelta(minutes=max(future_mins_list))).replace(tzinfo=None)
 
     output: List[Dict[str, Union[str, int, float]]] = []
 
     for source_duration in source_hours_list:
 
         model_start: dt.datetime = (source_end -
-                                    dt.timedelta(hours=source_duration))
+                                    dt.timedelta(hours=source_duration)).replace(tzinfo=None)
 
         LOG.info("Predicting future traffic using %f hours of source data from"
                  " %s to %s", source_duration, model_start, source_end)
@@ -215,12 +215,11 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
                 results.to_csv(save_path)
 
                 if output is None:
-                    ouput = results
+                    output = results
                 else:
-                    output = ouput.append(results)
+                    output = output.append(results)
 
     return output
-
 
 def _create_parser() -> argparse.ArgumentParser:
 

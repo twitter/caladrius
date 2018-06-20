@@ -95,12 +95,8 @@ Additional command line arguments are available via:
 
 ## Documentation
 
-<<<<<<< HEAD
-Documentation for stable releases is hosted on [ReadTheDocs]().
-=======
 Documentation for stable releases is hosted on
 [ReadTheDocs](http://caladrius.readthedocs.io/).
->>>>>>> oss-github
 
 If you want to build the latest documentation then this can be done using
 [Sphinx](http://www.sphinx-doc.org/en/master/index.html). Assuming you have

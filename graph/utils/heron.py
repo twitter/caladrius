@@ -110,7 +110,7 @@ def graph_check(graph_client: GremlinClient, zk_config: Dict[str, Any],
                 tracker_url: str, cluster: str, environ: str,
                 topology_id: str) -> str:
     """ Checks to see if the specified topology has an entry in the graph
-    database and if so weather that entry was created since the latest change
+    database and if so whether that entry was created since the latest change
     to the physical plan object stored in the ZooKeeper cluster (defined in the
     supplied config object)
 

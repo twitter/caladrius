@@ -196,5 +196,9 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
                     "source_component": source,
                     "coefficient": coeffs[i]}
                 rows.append(row)
+    result = pd.DataFrame(rows)
 
-    return pd.DataFrame(rows)
+    if result.empty:
+        raise Exception("lstsq_io_ratios returns an empty dataframe")
+
+    return result
