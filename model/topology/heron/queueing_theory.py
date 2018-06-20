@@ -137,6 +137,8 @@ class QTTopologyModel(HeronTopologyModel):
         # Get the service time for all elements
         service_times: pd.DataFrame = self.metrics_client.get_service_times(
             topology_id, cluster, environ, start, end, **other_kwargs)
+        if service_times.empty:
+            raise Exception("Metric client returned empty data frame for service times.")
 
         # Calculate the service rate for each instance
         service_times["tuples_per_sec"] = 1.0 / (service_times["latency_ms"] /
