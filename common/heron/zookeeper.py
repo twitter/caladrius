@@ -17,13 +17,7 @@ import requests
 LOG: logging.Logger = logging.getLogger(__name__)
 
 TOPO_UPDATED_SEARCH_STR: str = \
-    (r"ctime</td><td>(?P<date>\w+.? \d+, \d+ \d+:\d+ \w.\w.) "
-     r"\(((?P<months>\d+)\s?months?,?)?\s?"
-     r"((?P<weeks>\d+)\s?weeks?,?)?\s?"
-     r"((?P<days>\d+)\s?days?,?)?\s?"
-     r"((?P<hours>\d+)\s?hours?,?)?\s?"
-     r"((?P<minutes>\d+\s?minutes?))?"
-     r"\sago\)")
+    r"ctime<\/td><td>(?P<date>\w+.? \d+, \d+ \d+:\d+ \w.\w.)\s\([\w|\d|\s]*ago\)"
 
 DATE_FORMAT: str = "%B %d, %Y %I:%M %p"
 OLD_DATE_FORMAT: str = "%b %d, %Y %I:%M %p"
