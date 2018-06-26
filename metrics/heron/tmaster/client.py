@@ -872,3 +872,24 @@ class HeronTMasterClient(HeronMetricsClient):
                     "available via the TMaster metrics database")
         LOG.error(msg)
         raise NotImplementedError(msg)
+
+    def get_incoming_queue_sizes(self, topology_id: str, cluster: str, environ: str,
+                                 start: [dt.datetime] = None, end: [dt.datetime] = None,
+                                 **kwargs: Union[str, int, float]) -> pd.DataFrame:
+        msg: str = "Unimplemented"
+        LOG.error(msg)
+        raise NotImplementedError(msg)
+
+    def get_cpu_load(self, topology_id: str, cluster: str, environ: str,
+                     start: [dt.datetime] = None, end: [dt.datetime] = None,
+                     ** kwargs: Union[str, int, float]) -> pd.DataFrame:
+        msg: str = "Unimplemented"
+        LOG.error(msg)
+        raise NotImplementedError(msg)
+
+    def get_gc_time(self, topology_id: str, cluster: str, environ: str,
+                    start: [dt.datetime] = None, end: [dt.datetime] = None,
+                    ** kwargs: Union[str, int, float]) -> pd.DataFrame:
+        msg: str = "Unimplemented"
+        LOG.error(msg)
+        raise NotImplementedError(msg)

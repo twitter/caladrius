@@ -140,5 +140,3 @@ class HeronTraffic(Resource):
             return {"errors": errors}, 500
 
         return output, 200
-
-        return output
