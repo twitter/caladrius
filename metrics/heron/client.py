@@ -85,13 +85,20 @@ class HeronMetricsClient(MetricsClient):
         means that none of the CPUs were running threads from the instance
         during the recent period of time observed, while a value of 1.0 means
         that all CPUs were actively running threads from the JVM
-        100% of the time during the recent period being observed. """
+        100% of the time during the recent period being observed."""
         pass
 
     @abstractmethod
     def get_gc_time(self, topology_id: str, cluster: str, environ: str,
-                     start: [dt.datetime] = None, end: [dt.datetime] = None,
-                     **kwargs: Union[str, int, float]) -> DataFrame:
+                    start: [dt.datetime] = None, end: [dt.datetime] = None,
+                    **kwargs: Union[str, int, float]) -> DataFrame:
         """ Gets the time spent in garbage collection for every running
-        instance in the topology.  """
+        instance in the topology."""
+        pass
+
+    @abstractmethod
+    def get_num_packets_received(self, topology_id: str, cluster: str, environ: str,
+                                 start: [dt.datetime] = None, end: [dt.datetime] = None,
+                                 **kwargs: Union[str, int, float]) -> DataFrame:
+        """ Retrieves the number of packets received per instance from the stream manager."""
         pass
