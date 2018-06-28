@@ -12,8 +12,10 @@ import datetime as dt
 from typing import Dict, Any, cast, Tuple
 
 import pandas as pd
+import numpy as np
 
 from caladrius.model.topology.heron.base import HeronTopologyModel
+from caladrius.model.topology.heron.queueing_models import MMCQueue
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.graph.analysis.heron import arrival_rates
@@ -77,6 +79,101 @@ class QTTopologyModel(HeronTopologyModel):
 
         return in_ars, strmgr_ars
 
+    def find_current_instance_waiting_times(self, topology_id: str, cluster: str,
+                                            environ: str, **kwargs: Any) -> pd.DataFrame:
+
+        if "start" in kwargs and "end" in kwargs:
+            start_ts: int = int(kwargs["start"])
+            start: dt.datetime = dt.datetime.utcfromtimestamp(start_ts)
+            end_ts: int = int(kwargs["end"])
+            end: dt.datetime = dt.datetime.utcfromtimestamp(end_ts)
+            LOG.info("Start and end time stamps supplied, using metric "
+                     "gathering period from %s to %s", start.isoformat(),
+                     end.isoformat())
+        elif "start" in kwargs and "end" not in kwargs:
+            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+            start_ts = int(kwargs["start"])
+            start = dt.datetime.utcfromtimestamp(start_ts)
+            LOG.info("Only start time (%s) was supplied. Setting end time to "
+                     "UTC now: %s", start.isoformat(), end.isoformat())
+        elif "source_hours" in kwargs:
+            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+            start = end - dt.timedelta(hours=int(kwargs["source_hours"]))
+            LOG.info("Source hours provided, using metric gathering period "
+                     "from %s to %s", start.isoformat(), end.isoformat())
+
+        else:
+            err_msg: str = ("Neither 'start', 'end' or 'source_hours' "
+                            "key word arguments were supplied. Either 'start',"
+                            " 'start' and 'end' or 'source_hours' should be "
+                            "provided")
+            LOG.error(err_msg)
+            raise RuntimeError(err_msg)
+
+        LOG.info("Calculating end to end performance latency of topology "
+                 "%s using queueing theory", topology_id)
+
+        # Remove the start and end time kwargs so we don't supply them twice to
+        # the metrics client.
+        other_kwargs: Dict[str, Any] = {key: value
+                                        for key, value in kwargs.items()
+                                        if key not in ["start", "end"]}
+
+        # Get the service time for all elements
+        service_times: pd.DataFrame = self.metrics_client.get_service_times(
+            topology_id, cluster, environ, start, end, **other_kwargs)
+
+        # Drop the system streams
+        service_times = (service_times[~service_times["stream"].str.contains("__")])
+
+        # Get arrival rates for all elements
+        arrival_rate: pd.DataFrame = self.metrics_client.get_packet_arrival_rate(
+            topology_id, cluster, environ, start, end, **other_kwargs)
+
+        # Get queue sizes for validation later
+        queue_size: pd.DataFrame = self.metrics_client.get_incoming_queue_sizes(
+            topology_id, cluster, environ, start, end, **other_kwargs)
+
+        # We have received service time only for bolts. But queue sizes and arrival rates are populated
+        # for spouts as well.
+        # Doing a merge to get rid of spout values
+        merged_data: pd.DataFrame = service_times.merge(arrival_rate, on=["task", "timestamp"])
+        merged_data: pd.DataFrame = merged_data.merge(queue_size, on=["task", "timestamp"])
+
+        unique_tasks: np.array = np.array(merged_data["task"].sort_values().unique())
+
+        # The following two need to be converted to rates
+        mean_latencies_per_task : pd.Series = merged_data.groupby(["task"])["latency_ms"].mean()
+        mean_arrival_rate: pd.Series = merged_data.groupby(["task"])["num-packets"].mean()
+        mean_queue_size_per_task: pd.Series = merged_data.groupby(["task"])["queue-size"].mean()
+
+        # Transforming values to correct units
+
+        # Transforming service time to service rate
+        mean_service_rate = mean_latencies_per_task.apply(lambda x: 1/x)
+        # Average queue size in a millisecond
+        mean_queue_size = mean_queue_size_per_task.apply(lambda x: x/(60 * 1000))
+
+        # Transforming values to arrays:
+        mean_service_rate = np.array(mean_service_rate, dtype=pd.Series)
+        mean_arrival_rate = np.array(mean_arrival_rate, dtype=pd.Series)
+        mean_queue_size = np.array(mean_queue_size, dtype=pd.Series)
+
+        LOG.info(type(mean_service_rate))
+
+        # Finding mean waiting time and validating queue size
+        queue: MMCQueue
+        waiting_time_dict = {}
+        for i in range(len(mean_arrival_rate)):
+            queue = MMCQueue(mean_arrival_rate[i], mean_service_rate[i], 1)
+            waiting_time_dict[unique_tasks[i]] = queue.average_waiting_time()
+            LOG.debug("Task number: " + str(i) + " waiting time: " + str(queue.average_waiting_time()) +
+                      " average queue size -> expected " + str(queue.average_queue_size()) +
+                      " actual: " + str(mean_queue_size[i]))
+            
+        waiting_time: dict = {'waiting_time': waiting_time_dict}
+        return pd.DataFrame(waiting_time)
+
     def predict_current_performance(
             self, topology_id: str, cluster: str, environ: str,
             spout_traffic: Dict[int, Dict[str, float]],
@@ -124,8 +221,8 @@ class QTTopologyModel(HeronTopologyModel):
         metric_bucket_length: int = cast(int,
                                          self.config["metric.bucket.length"])
 
-        LOG.info("Predicting performance of currently running topology %s "
-                 "using queueing theory model", topology_id)
+        LOG.info("Predicting traffic levels and backpressure of currently running "
+                 "topology %s using queueing theory model", topology_id)
 
         # Remove the start and end time kwargs so we don't supply them twice to
         # the metrics client.

@@ -6,6 +6,7 @@
 performance model classes"""
 
 from abc import abstractmethod
+import pandas as pd
 from typing import Any, Dict
 
 from caladrius.model.base import Model
@@ -14,6 +15,26 @@ from caladrius.model.base import Model
 class HeronTopologyModel(Model):
     """ Abstract base class for all Heron topology performance modelling
     classes """
+
+    @abstractmethod
+    def find_current_instance_waiting_times(self, topology_id: str, cluster: str,
+                                            environ: str, **kwargs: Any) -> pd.DataFrame:
+        """ Applies queueing theory concepts to find the end to end latency of the
+         specified topology.
+
+        Arguments:
+            topology_id (str): The identification string for the topology
+            whose performance will be predicted.
+            cluster (str): The cluster the topology is running on.
+            environ (str): The environment the topology is running in.
+            **kwargs: Any additional keyword arguments required by the model
+            implementation.
+
+        Returns:
+            A dictionary (suitable for conversion to JSON) containing the
+            performance prediction.
+        """
+        pass
 
     @abstractmethod
     def predict_current_performance(self, topology_id: str, cluster: str,
