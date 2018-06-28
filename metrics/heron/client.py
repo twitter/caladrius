@@ -102,3 +102,10 @@ class HeronMetricsClient(MetricsClient):
                                  **kwargs: Union[str, int, float]) -> DataFrame:
         """ Retrieves the number of packets received per instance from the stream manager."""
         pass
+
+    @abstractmethod
+    def get_packet_arrival_rate(self, topology_id: str, cluster: str, environ: str,
+                                start: [dt.datetime] = None, end: [dt.datetime] = None,
+                                **kwargs: Union[str, int, float]) -> DataFrame:
+        """ Retrieves the number of packets received per ms per instance from the stream manager."""
+        pass

@@ -397,7 +397,7 @@ def calculate(graph_client: GremlinClient, metrics_client: HeronMetricsClient,
 
     # Step through the tree levels and calculate the output from each level and
     # the arrivals at the next. Skip the final level as its arrival rates are
-    # calculated in the previous step and it has not outputs.
+    # calculated in the previous step and it has no outputs.
     for level_number, level in enumerate(levels[:-1]):
 
         LOG.debug("Processing topology level %d", level_number)

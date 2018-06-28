@@ -900,3 +900,10 @@ class HeronTMasterClient(HeronMetricsClient):
         msg: str = "Unimplemented"
         LOG.error(msg)
         raise NotImplementedError(msg)
+
+    def get_packet_arrival_rate(self, topology_id: str, cluster: str, environ: str,
+                                start: [dt.datetime] = None, end: [dt.datetime] = None,
+                                **kwargs: Union[str, int, float]) -> pd.DataFrame:
+        msg: str = "Unimplemented"
+        LOG.error(msg)
+        raise NotImplementedError(msg)
