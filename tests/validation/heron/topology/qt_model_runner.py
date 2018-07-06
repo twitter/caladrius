@@ -110,9 +110,9 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
 
                 # Get the actual arrival rates at all instances
                 actual_arrs: pd.DataFrame = \
-                    metrics_client.get_arrival_rates(topology_id, cluster,
-                                                     environ, traffic_start,
-                                                     traffic_end, **kwargs)
+                    metrics_client.get_calculated_arrival_rates(topology_id, cluster,
+                                                                environ, traffic_start,
+                                                                traffic_end, **kwargs)
 
                 actual_instance_arrs: pd.DataFrame = \
                     (actual_arrs.groupby(["component", "task"])

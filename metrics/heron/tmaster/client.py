@@ -813,9 +813,9 @@ class HeronTMasterClient(HeronMetricsClient):
 
         return output
 
-    def get_arrival_rates(self, topology_id: str, cluster: str, environ: str,
-                          start: dt.datetime, end: dt.datetime,
-                          **kwargs: Union[str, int, float]) -> pd.DataFrame:
+    def get_calculated_arrival_rates(self, topology_id: str, cluster: str, environ: str,
+                                     start: dt.datetime, end: dt.datetime,
+                                     **kwargs: Union[str, int, float]) -> pd.DataFrame:
         """ Gets the arrival rates, as a timeseries, for every instance of each
         of the bolt components of the specified topology. The start and end
         times define the window over which to gather the metrics. The window
@@ -904,6 +904,13 @@ class HeronTMasterClient(HeronMetricsClient):
     def get_packet_arrival_rate(self, topology_id: str, cluster: str, environ: str,
                                 start: [dt.datetime] = None, end: [dt.datetime] = None,
                                 **kwargs: Union[str, int, float]) -> pd.DataFrame:
+        msg: str = "Unimplemented"
+        LOG.error(msg)
+        raise NotImplementedError(msg)
+
+    def get_tuple_arrivals_at_stmgr(self, topology_id: str, cluster: str, environ: str,
+                                    start: [dt.datetime] = None, end: [dt.datetime] = None,
+                                    **kwargs: Union[str, int, float]) -> pd.DataFrame:
         msg: str = "Unimplemented"
         LOG.error(msg)
         raise NotImplementedError(msg)
