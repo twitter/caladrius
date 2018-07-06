@@ -59,9 +59,9 @@ class HeronMetricsClient(MetricsClient):
         pass
 
     @abstractmethod
-    def get_arrival_rates(self, topology_id: str, cluster: str, environ: str,
-                          start: dt.datetime, end: dt.datetime,
-                          **kwargs: Union[str, int, float]) -> DataFrame:
+    def get_calculated_arrival_rates(self, topology_id: str, cluster: str, environ: str,
+                                     start: dt.datetime, end: dt.datetime,
+                                     **kwargs: Union[str, int, float]) -> DataFrame:
         """ Gets a time series of the arrival rates, in units of tuples per
         second, for each of the instances in the specified topology"""
         pass
@@ -100,12 +100,24 @@ class HeronMetricsClient(MetricsClient):
     def get_num_packets_received(self, topology_id: str, cluster: str, environ: str,
                                  start: [dt.datetime] = None, end: [dt.datetime] = None,
                                  **kwargs: Union[str, int, float]) -> DataFrame:
-        """ Retrieves the number of packets received per instance from the stream manager."""
+        """ Retrieves the number of packets received (from the stream manager) per instance."""
         pass
 
     @abstractmethod
     def get_packet_arrival_rate(self, topology_id: str, cluster: str, environ: str,
                                 start: [dt.datetime] = None, end: [dt.datetime] = None,
                                 **kwargs: Union[str, int, float]) -> DataFrame:
-        """ Retrieves the number of packets received per ms per instance from the stream manager."""
+        """ Retrieves the number of packets received (from stream manager) per ms per
+        instance."""
+
         pass
+
+    @abstractmethod
+    def get_tuple_arrivals_at_stmgr(self, topology_id: str, cluster: str, environ: str,
+                                    start: [dt.datetime] = None, end: [dt.datetime] = None,
+                                    **kwargs: Union[str, int, float]) -> DataFrame:
+        """ Retrieves the number of packets received at the stream manager for every local
+        instance. We use this value to calculate inter-arrival times of packets."""
+
+        pass
+
