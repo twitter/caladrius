@@ -5,6 +5,7 @@
 """ This module models different queues and performs relevant calculations for it."""
 
 import pandas as pd
+import numpy as np
 
 from caladrius.model.topology.heron.abs_queueing_models import QueueingModels
 from caladrius.model.topology.heron.helpers import *
@@ -83,7 +84,7 @@ class GGCQueue(QueueingModels):
     more realistic scenarios as arrival rates and processing rates do not necessarily fit probabilistic
     distributions (such as the Poisson distribution, used to describe arrival rates in M/M/1 queues).
     """
-    def __init__(self, d):
+    def __init__(self, d: dict):
         """
         This function initializes relevant variables to calculate queue related metrics
         given a G/G/c model
@@ -99,15 +100,19 @@ class GGCQueue(QueueingModels):
             service_times (pd.DataFrame): this number indicates the average service time of tuples per
             instance (calculated by averaging execute latency) for the instance.
         """
-        tuple_arrivals: pd.DataFrame = d["tuple_arrivals"]
-        service_times: pd.DataFrame = d["service_times"]
-        self.inter_arrival_time_stats: pd.DataFrame = convert_throughput_to_inter_arr_times(tuple_arrivals)
-        self.service_times: pd.DataFrame = process_execute_latencies(service_times)
-        self.arrival_rate = convert_arr_rate_to_mean_arr_rate(tuple_arrivals)
-        self.service_rate = convert_service_times_to_rates(service_times)
+
+        self.tuple_arrivals: pd.DataFrame = d["tuple_arrivals"]
+        self.service_times: pd.DataFrame = d["service_times"]
+        self.execute_counts: pd.DataFrame = d["execute_counts"]
+        self.inter_arrival_time_stats: pd.DataFrame = convert_throughput_to_inter_arr_times(self.tuple_arrivals)
+        self.service_stats: pd.DataFrame = process_execute_latencies(self.service_times)
+        self.arrival_rate = convert_arr_rate_to_mean_arr_rate(self.tuple_arrivals)
+        self.service_rate = convert_service_times_to_rates(self.service_times)
+        self.queue_size = pd.DataFrame
 
     def average_waiting_time(self) -> pd.DataFrame:
-        merged: pd.DataFrame = self.service_times.merge(self.inter_arrival_time_stats, on=["task"])
+        merged: pd.DataFrame = self.service_stats.merge(self.inter_arrival_time_stats, on=["task"])
+
 
         merged["utilization"] = merged["mean_service_time"] / merged["mean_inter_arrival_time"]
         merged["coeff_var_arrival"] = merged["std_inter_arrival_time"] / merged["mean_inter_arrival_time"]
@@ -124,6 +129,36 @@ class GGCQueue(QueueingModels):
         average_waiting_time = self.average_waiting_time()
         average_waiting_time = average_waiting_time[["task", "mean_waiting_time"]]
         merged = merged.merge(average_waiting_time, on=["task"])
-        queue_size: pd.DataFrame = littles_law(merged)
-        return queue_size
+        self.queue_size: pd.DataFrame = littles_law(merged)
+
+        self.queue_size["scaled_queue_size"] = self.queue_size["queue-size"] * 60 * 1000 # because it was calculated per ms
+        LOG.info(self.queue_size[["task", "mean_waiting_time", "mean_arrival_rate", "scaled_queue_size", "queue-size"]])
+        self.validate_queue_size()
+
+        return self.queue_size
+
+    def validate_queue_size(self) -> pd.DataFrame:
+
+        merged: pd.DataFrame = self.execute_counts.merge(self.tuple_arrivals, on=["task", "timestamp"])[["task","execute_count","num-tuples", "timestamp"]]
+        merged["rough-diff"] = merged["num-tuples"] - merged["execute_count"].astype(np.float64)
+
+        grouped = merged.groupby(["task"])
+
+        df: pd.DataFrame = pd.DataFrame(columns=['task', 'queue_size', 'timestamp'])
+        for row in grouped:
+            diff = 0
+            for x in range(len(row[1])):
+                if x == 0:
+                    diff = row[1]["num-tuples"].iloc[x]
+                elif x == len(row[1]) - 1:
+                    diff = diff - row[1]["execute_count"].iloc[x].astype(np.float64)
+                else:
+                    diff = diff + row[1]["num-tuples"].iloc[x] - row[1]["execute_count"].iloc[x].astype(np.float64) 
+
+                df = df.append({'task': row[1]["task"].iloc[0],
+                                'timestamp': row[1]["timestamp"].iloc[x],
+                                'queue_size': diff}, ignore_index=True)
+
+        LOG.info(df.groupby("task")[["queue_size"]].mean())
+        return merged
 
