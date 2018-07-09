@@ -204,6 +204,13 @@ class QTTopologyModel(HeronTopologyModel):
         # Drop the system streams
         service_times = (service_times[~service_times["stream"].str.contains("__")])
 
+        # Get execute counts for all elements for validation
+        execute_counts: pd.DataFrame = self.metrics_client.get_execute_counts(
+            topology_id, cluster, environ, start, end, **other_kwargs)
+
+        # Drop the system streams
+        service_times = (service_times[~service_times["stream"].str.contains("__")])
+
         # Get number of arrivals at stream managers
         tuple_arrivals: pd.DataFrame = self.metrics_client.get_tuple_arrivals_at_stmgr\
             (topology_id, cluster, environ, start, end, **kwargs)
@@ -211,7 +218,8 @@ class QTTopologyModel(HeronTopologyModel):
         d: dict = dict()
         d["tuple_arrivals"] = tuple_arrivals
         d["service_times"] = service_times
-        queue: GGCQueue = GGCQueue()
+        d["execute_counts"] = execute_counts
+        queue: GGCQueue = GGCQueue(d)
         merged: pd.DataFrame = queue.average_waiting_time()
         queue_size: pd.DataFrame = queue.average_queue_size()
         subset: pd.DataFrame = queue_size[["task", "queue-size"]]
