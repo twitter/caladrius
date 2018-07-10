@@ -4,11 +4,14 @@
 
 """ This module models different queues and performs relevant calculations for it."""
 
+import datetime as dt
 import pandas as pd
-import numpy as np
 
+from caladrius.metrics.client import MetricsClient
+from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.model.topology.heron.abs_queueing_models import QueueingModels
 from caladrius.model.topology.heron.helpers import *
+from caladrius.graph.utils.heron import get_all_paths
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -33,47 +36,54 @@ class MMCQueue(QueueingModels):
     distribution. An extension of this model is one with multiple servers (denoted by variable 'c')
     and is called an M/M/c queue.
     """
-    def __init__(self, d: dict):
+    def __init__(self, metrics_client: MetricsClient, graph_client: GremlinClient, topology_id: str,
+                 cluster: str, environ: str, start: dt.datetime, end: dt.datetime, other_kwargs: dict):
         """
         This function initializes relevant variables to calculate queue related metrics
         given an M/M/c model.
-        Arguments:
-                service_times (pd.DataFrame) : This number indicates the average
-                service time of tuples per instance (calculated by averaging execute
-                latency) for the instance.
-                arrival_rate (pd.DataFrame): This is a timeseries that indicates the
-                number of tuples arriving per millisecond for each instance.
         """
-        service_times: pd.DataFrame = d["service_times"]
-        arrival_rate: pd.DataFrame = d["arrival_rate"]
 
-        self.service_rates = convert_service_times_to_rates(service_times)
+        super().__init__(metrics_client, graph_client, topology_id, cluster, environ, start, end, other_kwargs)
+
+        # find all end-to-end paths in topology
+        self.paths = get_all_paths(self.graph_client, topology_id)
+
+        # Get the service time for all elements
+        service_times: pd.DataFrame = self.metrics_client.get_service_times(
+            topology_id, cluster, environ, start, end, **other_kwargs)
+
+        # Drop the system streams
+        self.service_times = (service_times[~service_times["stream"].str.contains("__")])
+
+        # Get arrival rates per ms for all instances
+        # We should not be using this any more.
+        arrival_rate: pd.DataFrame = self.metrics_client.get_tuple_arrivals_at_stmgr(
+            topology_id, cluster, environ, start, end, **other_kwargs)
+
+        # Finding mean waiting time and validating queue size
+        self.service_rate = convert_service_times_to_rates(service_times)
         self.arrival_rate = convert_arr_rate_to_mean_arr_rate(arrival_rate)
 
     def average_waiting_time(self) -> pd.DataFrame:
-        merged: pd.DataFrame = self.service_rates.merge(self.arrival_rate, on=["task"])
-        merged["mean_waiting_time"] = merged["mean_arrival_rate"] /\
-                                             (merged["mean_service_rate"] *
-                                             (merged["mean_service_rate"] - merged["mean_arrival_rate"]))
+        merged: pd.DataFrame = self.service_rate.merge(self.arrival_rate, on=["task"])
+        merged["mean_waiting_time"] = merged["mean_arrival_rate"] / \
+            (merged["mean_service_rate"] * (merged["mean_service_rate"] - merged["mean_arrival_rate"]))
         return merged
 
-    def average_queue_size(self, actual_queue_size: pd.DataFrame=pd.DataFrame) -> pd.DataFrame:
-        merged: pd.DataFrame = self.service_rates.merge(self.arrival_rate, on=["task"])
-        merged["server_utilization"] = merged["mean_arrival_rate"]/merged["mean_service_rate"]
-        merged["mmc-queue-sizes"] = (merged["server_utilization"] ** 2)/(1 - merged["server_utilization"])
-
-        if not actual_queue_size.empty:
-            df: pd.DataFrame = pd.DataFrame(columns=['task', 'actual_queue_size'])
-            queue_size = actual_queue_size.groupby(["task"])
-            for row in queue_size:
-                data = row[1]["queue-size"]
-                # convert measured queue size from queue size per minute to queue size per ms
-                df = df.append({'task': row[1]["task"].iloc[0],
-                                'actual_queue_size': data.mean()/(60*1000)}, ignore_index=True)
-
-            merged = merged.merge(df, on=["task"])
+    def average_queue_size(self) -> pd.DataFrame:
+        merged: pd.DataFrame = self.service_rate.merge(self.arrival_rate, on=["task"])
+        merged["utilization"] = merged["mean_arrival_rate"]/merged["mean_service_rate"]
+        merged["queue-size"] = (merged["utilization"] ** 2)/(1 - merged["utilization"])
 
         return merged
+
+    def end_to_end_latencies(self) -> list:
+        merged: pd.DataFrame = self.average_waiting_time()
+        queue_size: pd.DataFrame = self.average_queue_size()
+        merged = merged.merge(queue_size, on=["task"])[["utilization", "task", "mean_waiting_time", "queue-size", "mean_arrival_rate_x"]]
+        merged = merged.rename(columns={'mean_arrival_rate_x': 'mean_arrival_rate'})
+        LOG.info(merged)
+        return find_end_to_end_latencies(self.paths, merged, self.service_times)
 
 
 class GGCQueue(QueueingModels):
@@ -84,7 +94,8 @@ class GGCQueue(QueueingModels):
     more realistic scenarios as arrival rates and processing rates do not necessarily fit probabilistic
     distributions (such as the Poisson distribution, used to describe arrival rates in M/M/1 queues).
     """
-    def __init__(self, d: dict):
+    def __init__(self, metrics_client: MetricsClient, graph_client: GremlinClient, topology_id: str,
+                 cluster: str, environ: str, start: dt.datetime, end: dt.datetime, other_kwargs: dict):
         """
         This function initializes relevant variables to calculate queue related metrics
         given a G/G/c model
@@ -94,16 +105,35 @@ class GGCQueue(QueueingModels):
         There is a great deal of detail available here
         http://home.iitk.ac.in/~skb/qbook/Slide_Set_12.PDF and
         http://www.math.nsc.ru/LBRT/v1/foss/gg1_2803.pdf
-        Arguments:
-            tuple_arrivals (pd.DataFrame): the number of tuples per instance that arrive at the stream
-            manager per minute
-            service_times (pd.DataFrame): this number indicates the average service time of tuples per
-            instance (calculated by averaging execute latency) for the instance.
         """
+        super().__init__(metrics_client, graph_client, topology_id, cluster, environ, start, end, other_kwargs)
 
-        self.tuple_arrivals: pd.DataFrame = d["tuple_arrivals"]
-        self.service_times: pd.DataFrame = d["service_times"]
-        self.execute_counts: pd.DataFrame = d["execute_counts"]
+        # find all end-to-end paths in topology
+        self.paths = get_all_paths(self.graph_client, topology_id)
+
+        # Remove the start and end time kwargs so we don't supply them twice to
+        # the metrics client.
+
+        # Get the service time for all elements
+        service_times: pd.DataFrame = self.metrics_client.get_service_times(
+            topology_id, cluster, environ, start, end, **other_kwargs)
+
+        # Drop the system streams
+        service_times = (service_times[~service_times["stream"].str.contains("__")])
+
+        # Get execute counts for all elements for validation
+        execute_counts: pd.DataFrame = self.metrics_client.get_execute_counts(
+            topology_id, cluster, environ, start, end, **other_kwargs)
+
+        # Drop the system streams
+        self.service_times = (service_times[~service_times["stream"].str.contains("__")])
+
+        # Get number of arrivals at stream managers
+        tuple_arrivals: pd.DataFrame = self.metrics_client.get_tuple_arrivals_at_stmgr\
+            (topology_id, cluster, environ, start, end, **other_kwargs)
+
+        self.tuple_arrivals: pd.DataFrame = tuple_arrivals
+        self.execute_counts: pd.DataFrame = execute_counts
         self.inter_arrival_time_stats: pd.DataFrame = convert_throughput_to_inter_arr_times(self.tuple_arrivals)
         self.service_stats: pd.DataFrame = process_execute_latencies(self.service_times)
         self.arrival_rate = convert_arr_rate_to_mean_arr_rate(self.tuple_arrivals)
@@ -112,7 +142,6 @@ class GGCQueue(QueueingModels):
 
     def average_waiting_time(self) -> pd.DataFrame:
         merged: pd.DataFrame = self.service_stats.merge(self.inter_arrival_time_stats, on=["task"])
-
 
         merged["utilization"] = merged["mean_service_time"] / merged["mean_inter_arrival_time"]
         merged["coeff_var_arrival"] = merged["std_inter_arrival_time"] / merged["mean_inter_arrival_time"]
@@ -131,34 +160,18 @@ class GGCQueue(QueueingModels):
         merged = merged.merge(average_waiting_time, on=["task"])
         self.queue_size: pd.DataFrame = littles_law(merged)
 
-        self.queue_size["scaled_queue_size"] = self.queue_size["queue-size"] * 60 * 1000 # because it was calculated per ms
-        LOG.info(self.queue_size[["task", "mean_waiting_time", "mean_arrival_rate", "scaled_queue_size", "queue-size"]])
-        self.validate_queue_size()
+        self.queue_size["scaled-queue-size"] = self.queue_size["queue-size"] * 60 * 1000 # because it was calculated per ms
+        LOG.info(self.queue_size[["task", "mean_waiting_time", "mean_arrival_rate", "scaled-queue-size", "queue-size"]])
+        validate_queue_size(self.execute_counts, self.tuple_arrivals)
 
         return self.queue_size
 
-    def validate_queue_size(self) -> pd.DataFrame:
+    def end_to_end_latencies(self) -> list:
+        merged: pd.DataFrame = self.average_waiting_time()
+        # for validation only
+        queue_size: pd.DataFrame = self.average_queue_size()
 
-        merged: pd.DataFrame = self.execute_counts.merge(self.tuple_arrivals, on=["task", "timestamp"])[["task","execute_count","num-tuples", "timestamp"]]
-        merged["rough-diff"] = merged["num-tuples"] - merged["execute_count"].astype(np.float64)
+        subset: pd.DataFrame = queue_size[["task", "queue-size"]]
+        merged = merged.merge(subset, on=["task"])[["utilization", "task", "mean_waiting_time", "queue-size"]]
 
-        grouped = merged.groupby(["task"])
-
-        df: pd.DataFrame = pd.DataFrame(columns=['task', 'queue_size', 'timestamp'])
-        for row in grouped:
-            diff = 0
-            for x in range(len(row[1])):
-                if x == 0:
-                    diff = row[1]["num-tuples"].iloc[x]
-                elif x == len(row[1]) - 1:
-                    diff = diff - row[1]["execute_count"].iloc[x].astype(np.float64)
-                else:
-                    diff = diff + row[1]["num-tuples"].iloc[x] - row[1]["execute_count"].iloc[x].astype(np.float64) 
-
-                df = df.append({'task': row[1]["task"].iloc[0],
-                                'timestamp': row[1]["timestamp"].iloc[x],
-                                'queue_size': diff}, ignore_index=True)
-
-        LOG.info(df.groupby("task")[["queue_size"]].mean())
-        return merged
-
+        return find_end_to_end_latencies(self.paths, merged, self.service_times)

@@ -9,11 +9,12 @@ import logging
 
 import datetime as dt
 
-from typing import Dict, Any, cast, Tuple
+from typing import Any, cast, Dict, Tuple
 
 import pandas as pd
 
 from caladrius.model.topology.heron.base import HeronTopologyModel
+from caladrius.model.topology.heron.abs_queueing_models import QueueingModels
 from caladrius.model.topology.heron.queueing_models import MMCQueue, GGCQueue
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.gremlin.client import GremlinClient
@@ -79,7 +80,7 @@ class QTTopologyModel(HeronTopologyModel):
         return in_ars, strmgr_ars
 
     def find_current_instance_waiting_times(self, topology_id: str, cluster: str,
-                                            environ: str, **kwargs: Any) -> pd.DataFrame:
+                                            environ: str, **kwargs: Any) -> list:
 
         if "start" in kwargs and "end" in kwargs:
             start_ts: int = int(kwargs["start"])
@@ -123,108 +124,9 @@ class QTTopologyModel(HeronTopologyModel):
                                         for key, value in kwargs.items()
                                         if key not in ["start", "end"]}
 
-        # Get the service time for all elements
-        service_times: pd.DataFrame = self.metrics_client.get_service_times(
-            topology_id, cluster, environ, start, end, **other_kwargs)
-
-        # Drop the system streams
-        service_times = (service_times[~service_times["stream"].str.contains("__")])
-
-        # Get arrival rates per ms for all instances
-        # We should not be using this any more.
-        arrival_rate: pd.DataFrame = self.metrics_client.get_tuple_arrivals_at_stmgr(
-            topology_id, cluster, environ, start, end, **other_kwargs)
-
-        # Get queue sizes for validation later
-        # (This queue size is measuring number of packets and not number of tuples and
-        # so should not be used. Remove this.)
-        actual_queue_size: pd.DataFrame = self.metrics_client.get_incoming_queue_sizes(
-            topology_id, cluster, environ, start, end, **other_kwargs)
-
-        # Finding mean waiting time and validating queue size
-        d: dict = dict()
-        d["service_times"] = service_times
-        d["arrival_rate"] = arrival_rate
-
-        queue: MMCQueue = MMCQueue(d)
-        # For validation
-        merged: pd.DataFrame = queue.average_waiting_time()
-        queue_size: pd.DataFrame = queue.average_queue_size(actual_queue_size)
-        merged = merged.merge(queue_size, on=["task"])
-        return merged
-
-    def find_current_instance_waiting_times_ggc_queues(self, topology_id: str, cluster: str,
-                                            environ: str, **kwargs: Any) -> pd.DataFrame:
-        if "start" in kwargs and "end" in kwargs:
-            start_ts: int = int(kwargs["start"])
-            start: dt.datetime = dt.datetime.utcfromtimestamp(start_ts)
-            end_ts: int = int(kwargs["end"])
-            end: dt.datetime = dt.datetime.utcfromtimestamp(end_ts)
-            LOG.info("Start and end time stamps supplied, using metric "
-                     "gathering period from %s to %s", start.isoformat(),
-                     end.isoformat())
-        elif "start" in kwargs and "end" not in kwargs:
-            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-            start_ts = int(kwargs["start"])
-            start = dt.datetime.utcfromtimestamp(start_ts)
-            LOG.info("Only start time (%s) was supplied. Setting end time to "
-                     "UTC now: %s", start.isoformat(), end.isoformat())
-        elif "source_hours" in kwargs:
-            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-            start = end - dt.timedelta(hours=int(kwargs["source_hours"]))
-            LOG.info("Source hours provided, using metric gathering period "
-                     "from %s to %s", start.isoformat(), end.isoformat())
-        elif "source_mins" in kwargs:
-            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-            start = end - dt.timedelta(minutes=int(kwargs["source_mins"]))
-            LOG.info("Source mins provided, using metric gathering period "
-                     "from %s to %s", start.isoformat(), end.isoformat())
-
-        else:
-            err_msg: str = ("Neither 'start', 'end' or 'source_hours' "
-                            "key word arguments were supplied. Either 'start',"
-                            " 'start' and 'end' or 'source_hours' should be "
-                            "provided")
-            LOG.error(err_msg)
-            raise RuntimeError(err_msg)
-
-        LOG.info("Calculating end to end performance latency of topology "
-                 "%s using queueing theory", topology_id)
-
-        # Remove the start and end time kwargs so we don't supply them twice to
-        # the metrics client.
-        other_kwargs: Dict[str, Any] = {key: value
-                                        for key, value in kwargs.items()
-                                        if key not in ["start", "end"]}
-
-        # Get the service time for all elements
-        service_times: pd.DataFrame = self.metrics_client.get_service_times(
-            topology_id, cluster, environ, start, end, **other_kwargs)
-
-        # Drop the system streams
-        service_times = (service_times[~service_times["stream"].str.contains("__")])
-
-        # Get execute counts for all elements for validation
-        execute_counts: pd.DataFrame = self.metrics_client.get_execute_counts(
-            topology_id, cluster, environ, start, end, **other_kwargs)
-
-        # Drop the system streams
-        service_times = (service_times[~service_times["stream"].str.contains("__")])
-
-        # Get number of arrivals at stream managers
-        tuple_arrivals: pd.DataFrame = self.metrics_client.get_tuple_arrivals_at_stmgr\
-            (topology_id, cluster, environ, start, end, **kwargs)
-
-        d: dict = dict()
-        d["tuple_arrivals"] = tuple_arrivals
-        d["service_times"] = service_times
-        d["execute_counts"] = execute_counts
-        queue: GGCQueue = GGCQueue(d)
-        merged: pd.DataFrame = queue.average_waiting_time()
-        queue_size: pd.DataFrame = queue.average_queue_size()
-        subset: pd.DataFrame = queue_size[["task", "queue-size"]]
-        merged = merged.merge(subset, on=["task"])
-        return merged
+        queue: QueueingModels = GGCQueue(self.metrics_client, self.graph_client,
+                                         topology_id, cluster, environ, start, end, other_kwargs)
+        return queue.end_to_end_latencies()
 
     def predict_current_performance(
             self, topology_id: str, cluster: str, environ: str,

@@ -8,6 +8,7 @@ import logging
 
 from typing import List, Type, Dict, Any, Tuple
 
+import json
 import pandas as pd
 
 from flask import request
@@ -30,7 +31,7 @@ class HeronTopologyModels(Resource):
         self.models_info: List[Dict[str, Any]] = []
 
         for model in model_classes:
-            model_info: Dict[str, str] = {}
+            model_info: Dict[str, str] = dict()
             model_info["name"] = model.name
             model_info["description"] = model.description
             self.models_info.append(model_info)
@@ -213,7 +214,7 @@ class HeronCurrent(Resource):
             model = self.models[model_name]
 
             try:
-                results: pd.DataFrame = model.find_current_instance_waiting_times(
+                results: list = model.find_current_instance_waiting_times(
                     topology_id=topology_id, cluster=cluster,
                     environ=environ, **model_kwargs)
             except Exception as err:
@@ -222,7 +223,7 @@ class HeronCurrent(Resource):
                 errors.append({"model": model.name, "type": str(type(err)),
                                "error": str(err)})
             else:
-                output[model_name] = results.to_json()
+                output[model_name] = json.dumps(results)
 
         if errors:
             return {"errors": errors}, 500
