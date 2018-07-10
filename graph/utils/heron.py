@@ -10,6 +10,7 @@ import logging
 import datetime as dt
 
 from typing import List, Dict, Any, Optional, Tuple
+from gremlin_python.process.graph_traversal import (not_, out, outE)
 
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.graph.builder.heron import builder
@@ -18,6 +19,29 @@ from caladrius.common.heron import zookeeper
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+
+def get_all_paths(graph_client: GremlinClient, topology_id: str) -> List[List[str]]:
+    """ Gets all paths from sources to sinks.
+
+    Arguments:
+        graph_client (GremlinClient): The client instance for the graph
+                                      database.
+        topology_id (str):  The topology ID string.
+
+    Returns:
+        All possible paths from sources to sinks.
+    """
+    paths = graph_client.graph_traversal.V().hasLabel("spout").\
+        has("topology_id", topology_id).repeat(out("logically_connected").simplePath()).\
+        until(not_(outE("logically_connected"))).path().dedup().toList()
+
+    paths_list = [[] for x in range(len(paths))]
+
+    for x in range(len(paths)):
+        for v in paths[x]:
+            paths_list[x].append(graph_client.graph_traversal.V().hasId(v).values('task_id').next())
+
+    return paths_list
 
 def get_current_refs(graph_client: GremlinClient,
                      topology_id: str) -> List[str]:

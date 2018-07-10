@@ -18,7 +18,7 @@ class HeronTopologyModel(Model):
 
     @abstractmethod
     def find_current_instance_waiting_times(self, topology_id: str, cluster: str,
-                                            environ: str, **kwargs: Any) -> pd.DataFrame:
+                                            environ: str, **kwargs: Any) -> list:
         """ Applies queueing theory concepts to find the end to end latency of the
          specified topology.
 
