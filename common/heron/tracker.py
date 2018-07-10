@@ -117,7 +117,7 @@ def get_logical_plan(tracker_url: str, cluster: str, environ: str,
 
 def get_physical_plan(tracker_url: str, cluster: str, environ: str,
                       topology: str) -> Dict[str, Any]:
-    """ Get the logical plan dictionary from the heron tracker API.
+    """ Get the physical plan dictionary from the heron tracker API.
 
     Arguments:
         tracker_url (str):  The base url string for the Heron Tracker instance.
@@ -147,6 +147,45 @@ def get_physical_plan(tracker_url: str, cluster: str, environ: str,
         response.raise_for_status()
     except requests.HTTPError as err:
         LOG.error("Physical plan request for topology: %s , cluster: %s, "
+                  "environment: %s failed with error code: %s", topology,
+                  cluster, environ, str(response.status_code))
+        raise err
+
+    return response.json()["result"]
+
+
+def get_packing_plan(tracker_url: str, cluster: str, environ: str,
+                      topology: str) -> Dict[str, Any]:
+    """ Get the packing plan dictionary from the heron tracker API.
+
+    Arguments:
+        tracker_url (str):  The base url string for the Heron Tracker instance.
+        cluster (str):  The cluster the topology is running in.
+        environ (str):  The environment the topology is running in (eg. prod,
+                        devel, test, etc).
+        topology (str): The topology name.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing details of the containers
+        for the specified topology, in terms of their resource allocations.
+
+    Raises:
+        requests.HTTPError: If a non 200 status code is returned.
+    """
+
+    LOG.info("Fetching packing plan for topology: %s", topology)
+
+    packing_url: str = tracker_url + "/topologies/packingplan"
+
+    response: requests.Response = requests.get(packing_url,
+                                               params={"cluster": cluster,
+                                                       "environ": environ,
+                                                       "topology": topology})
+
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as err:
+        LOG.error("Packing plan request for topology: %s , cluster: %s, "
                   "environment: %s failed with error code: %s", topology,
                   cluster, environ, str(response.status_code))
         raise err
