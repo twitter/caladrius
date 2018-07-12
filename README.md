@@ -61,7 +61,7 @@ plugin installed:
 Start the server with the gremlin python config (included in the standard
 server distribution):
 
-    $ gremlin-server.sh start conf/gremlin-server-modern-py.yaml
+    $ bin/gremlin-server.sh start conf/gremlin-server-modern-py.yaml
 
 *Please note:* The default settings for the Gremlin Server result in an
 in-memory TinkerPop Server instance. If graphs need to be persisted to disk
