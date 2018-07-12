@@ -11,6 +11,7 @@ pyyaml = "*"
 gremlinpython = "*"
 matplotlib = "*"
 fbprophet = "*"
+jsonschema = "*"
 
 [dev-packages]
 ipython = "*"

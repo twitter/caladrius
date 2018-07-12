@@ -60,3 +60,12 @@ heron.topology.models.config:
     zk.time.offset: -5
     metric.bucket.length: 120
     heron.tracker.url: "http://heron-tracker-new.prod.heron.service.smf1.twitter.com"
+
+
+# This map is for configuring models for proposed packing plans.
+heron.packingpplans.models.config:
+    heron.statemgr.connection.string: 'szookeeper.smf1.twitter.com'
+    heron.statemgr.root.path: 'tree/storm/heron/states'
+    zk.time.offset: -5
+    metric.bucket.length: 120
+    heron.tracker.url: "http://heron-tracker-new.prod.heron.service.smf1.twitter.com"

@@ -9,6 +9,7 @@ import logging
 from typing import List, Type, Dict, Any, Tuple
 
 import json
+from jsonschema import validate
 import pandas as pd
 
 from flask import request
@@ -231,9 +232,133 @@ class HeronCurrent(Resource):
         return output, 200
 
 class HeronProposed(Resource):
+    """ Resource class for predicting the change in performance of a topology if it's packing
+        plan were changed to the provided packing plan.  """
 
-    def get(self, topology_id: str) -> Tuple[Dict[str, Any], int]:
-        return {"errors": ["Not implemented yet"]}, 501
+    def __init__(self, model_classes: List[Type], model_config: Dict[str, Any],
+                 metrics_client: HeronMetricsClient,
+                 graph_client: GremlinClient, tracker_url: str) -> None:
+        self.metrics_client: HeronMetricsClient = metrics_client
+        self.graph_client: GremlinClient = graph_client
 
-    def post(self, topo_id: str) -> Tuple[Dict[str, Any], int]:
-        return {"errors": ["Not implemented yet"]}, 501
+        self.tracker_url: str = tracker_url
+        self.model_config: Dict[str, Any] = model_config
+
+        self.models: Dict[str, HeronTopologyModel] = {}
+        for model_class in model_classes:
+            model = model_class(model_config, metrics_client, graph_client)
+            self.models[model.name] = model
+
+        super().__init__()
+
+    def post(self, topology_id: str):
+        """ Method handling POST requests to the current topology performance
+            modelling endpoint."""
+
+        # Checking to make sure we have required arguments
+        errors: List[Dict[str, str]] = []
+        if "cluster" not in request.args:
+            errors.append({"type": "MissingParameter",
+                           "error": "'cluster' parameter should be supplied"})
+
+        if "environ" not in request.args:
+            errors.append({"type": "MissingParameter",
+                           "error": "'environ' parameter should be supplied"})
+
+        if "model" not in request.args:
+            errors.append({"type": "MissingParameter",
+                           "error": ("At least one 'model' parameter should "
+                                     "be supplied. Supply 'all' to run all "
+                                     "configured models")})
+
+        # Return useful errors to the client if any parameters are missing
+        if errors:
+            return {"errors": errors}, 400
+
+        LOG.info("Processing performance modelling request for topology: %s, "
+                 "cluster: %s, environment: %s, using model: %s", topology_id,
+                 request.args.get("cluster"), request.args.get("environ"),
+                 str(request.args.getlist("model")))
+
+        # Make sure we have a current graph representing the physical plan for
+        # the topology
+        graph_check(self.graph_client, self.model_config, self.tracker_url,
+                    request.args.get("cluster"), request.args.get("environ"),
+                    topology_id)
+
+        # Get the proposed packing plan and parse it.
+        json_packing_plan = request.get_json()
+        validated: bool = self.validate_packing_plan(json_packing_plan)
+
+        if validated:
+            LOG.info(json_packing_plan)
+
+        ##TODO: Add code for comparison with current gpacking plans
+
+        return json_packing_plan
+
+    def validate_packing_plan(self, json_packing_plan) -> bool:
+        schema = {
+            "definitions": {
+                "resource": {
+                    "type": "object",
+                    "properties": {
+                        "cpu": {"type": "string"},
+                        "ram": {"type": "string"},
+                        "disk": {"type": "string"}
+                    },
+                    "required": ["cpu", "ram", "disk"]
+                },
+                "instance": {
+                    "properties": {
+                        "instance_resources": {
+                            "maxProperties": 1,
+                            "minProperties": 1,
+                            "$ref": "#/definitions/resource"},
+                        "component_name": {"type": "string"},
+                        "task_id": {"type": "string"}
+                    },
+                    "required": ["instance_resources", "component_name", "task_id"]
+                },
+                "container_plan": {
+                    "type": "object",
+                    "properties": {
+                        "scheduled_resources": {
+                            "maxProperties": 1,
+                            "minProperties": 1,
+                            "$ref": "#/definitions/resource"},
+                        "instances": {"type": "array",
+                                      "items": {
+                                          "$ref": "#/definitions/instance"}
+                                      },
+                        "required_resources": {
+                            "maxProperties": 1,
+                            "minProperties": 1,
+                            "$ref": "#/definitions/resource"}
+                    },
+                    "required": ["required_resources", "instances"]
+                }
+            },
+            "type": "object",
+            "properties": {
+                "container_plans": {
+                    "type": "array",
+                    "items": {
+
+                        "$ref": "#/definitions/container_plan"
+                    }
+                }
+            },
+            "required": ["container_plans"]
+        }
+
+        try:
+            validate(json_packing_plan, schema)
+
+        except Exception as err:
+            LOG.error("Error validating json: %s -> %s", json_packing_plan,  str(err))
+            return False
+
+        return True
+
+

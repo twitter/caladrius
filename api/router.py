@@ -103,7 +103,14 @@ def create_router(config: Dict[str, Any]) -> Flask:
     # ### PROPOSED TOPOLOGY MODELS ###
 
     api.add_resource(HeronProposed,
-                     '/model/topology/heron/proposed/<string:topology_id>')
+                     '/model/topology/heron/proposed/<string:topology_id>',
+                     resource_class_kwargs={
+                         'model_classes': heron_topology_model_classes,
+                         'model_config': config["heron.packingpplans.models.config"],
+                         'metrics_client': heron_metrics_client,
+                         'graph_client': graph_client,
+                         'tracker_url': config[ConfKeys.HERON_TRACKER_URL.value]}
+                     )
 
     LOG.info("REST API router created")
 
