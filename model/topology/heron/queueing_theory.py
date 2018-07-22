@@ -8,10 +8,9 @@ Heron topologies using queueing theory. """
 import logging
 
 import datetime as dt
-
+import pandas as pd
 from typing import Any, cast, Dict, Tuple
 
-import pandas as pd
 
 from caladrius.model.topology.heron.base import HeronTopologyModel
 from caladrius.model.topology.heron.abs_queueing_models import QueueingModels
@@ -19,7 +18,9 @@ from caladrius.model.topology.heron.queueing_models import MMCQueue, GGCQueue
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.graph.analysis.heron import arrival_rates
-from caladrius.graph.utils.heron import graph_check
+from caladrius.graph.utils.heron import graph_check, read_paths
+from caladrius.performance_prediction.predictor import Predictor
+from caladrius.performance_prediction.simple_predictor import SimplePredictor
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -124,7 +125,9 @@ class QTTopologyModel(HeronTopologyModel):
                                         for key, value in kwargs.items()
                                         if key not in ["start", "end"]}
 
-        queue: QueueingModels = GGCQueue(self.metrics_client, self.graph_client,
+        paths = read_paths(other_kwargs, topology_id, cluster, environ)
+
+        queue: QueueingModels = GGCQueue(self.metrics_client, paths,
                                          topology_id, cluster, environ, start, end, other_kwargs)
         return queue.end_to_end_latencies()
 
@@ -231,7 +234,57 @@ class QTTopologyModel(HeronTopologyModel):
             spout_traffic: Dict[int, Dict[str, float]],
             proposed_plan: Any, **kwargs: Any) -> Dict[str, Any]:
 
-        prop_msg: str = ("Proposed physical plan performance modelling is not "
-                         "yet supported")
-        LOG.error(prop_msg)
-        raise NotImplementedError(prop_msg)
+        if "start" in kwargs and "end" in kwargs:
+            start_ts: int = int(kwargs["start"])
+            start: dt.datetime = dt.datetime.utcfromtimestamp(start_ts)
+            end_ts: int = int(kwargs["end"])
+            end: dt.datetime = dt.datetime.utcfromtimestamp(end_ts)
+            LOG.info("Start and end time stamps supplied, using metric "
+                     "gathering period from %s to %s", start.isoformat(),
+                     end.isoformat())
+        elif "start" in kwargs and "end" not in kwargs:
+            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+            start_ts = int(kwargs["start"])
+            start = dt.datetime.utcfromtimestamp(start_ts)
+            LOG.info("Only start time (%s) was supplied. Setting end time to "
+                     "UTC now: %s", start.isoformat(), end.isoformat())
+        elif "source_hours" in kwargs:
+            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+            start = end - dt.timedelta(hours=int(kwargs["source_hours"]))
+            LOG.info("Source hours provided, using metric gathering period "
+                     "from %s to %s", start.isoformat(), end.isoformat())
+        elif "source_mins" in kwargs:
+            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+            start = end - dt.timedelta(minutes=int(kwargs["source_mins"]))
+            LOG.info("Source mins provided, using metric gathering period "
+                     "from %s to %s", start.isoformat(), end.isoformat())
+
+        else:
+            err_msg: str = ("Neither 'start', 'end' or 'source_hours' "
+                            "key word arguments were supplied. Either 'start',"
+                            " 'start' and 'end' or 'source_hours' should be "
+                            "provided")
+            LOG.error(err_msg)
+            raise RuntimeError(err_msg)
+
+        LOG.info("Calculating performance of topology %s based on packing plan %s,"
+                 " based on performance from %s to %s", topology_id, str(proposed_plan),
+                 str(start), str(end))
+
+        # Remove the start and end time kwargs so we don't supply them twice to
+        # the metrics client.
+        other_kwargs: Dict[str, Any] = {key: value
+                                        for key, value in kwargs.items()
+                                        if key not in ["start", "end"]}
+
+        paths = read_paths(other_kwargs, topology_id, cluster, environ)
+        # TODO -- pass in a metrics source to the queue that can also give future times
+        queue: QueueingModels = GGCQueue(self.metrics_client, paths,
+                                         topology_id, cluster, environ,
+                                         start, end, other_kwargs)
+        p: Predictor = SimplePredictor(topology_id, cluster, environ, start,
+                                       end, self.tracker_url, self.metrics_client, self.graph_client,
+                                       proposed_plan, queue, **other_kwargs)
+
+        return p.evaluate_new_plan()
+
