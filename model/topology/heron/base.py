@@ -6,7 +6,6 @@
 performance model classes"""
 
 from abc import abstractmethod
-import pandas as pd
 from typing import Any, Dict
 
 from caladrius.model.base import Model

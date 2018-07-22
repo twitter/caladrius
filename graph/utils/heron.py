@@ -6,11 +6,14 @@
 the graph database."""
 
 import logging
-
 import datetime as dt
-
+import os
+import json
+from collections import defaultdict
+from multiprocessing import Process, Queue
+from string import Template
 from typing import List, Dict, Any, Optional, Tuple
-from gremlin_python.process.graph_traversal import (not_, out, outE)
+from gremlin_python.process.graph_traversal import outE
 
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.graph.builder.heron import builder
@@ -19,9 +22,91 @@ from caladrius.common.heron import zookeeper
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+# The format is paths/topologyname_cluster_environ_time.json
+file_path_template = Template("paths/$topology-$cluster-$environ-$time.json")
+
+
+def find_all_paths(parent_to_child, start, path=[], path_dict=defaultdict()):
+    """This is a recursive function that finds all paths from the given start node to
+    sinks and returns them."""
+    p = path.copy()
+    p.append(start)
+    if start not in parent_to_child:
+        return p, path_dict
+    paths = []
+    for node in parent_to_child[start]:
+        if node in path_dict:
+            new_paths = path_dict[node]
+        else:
+            new_paths, path_dict = find_all_paths(parent_to_child, node, p, path_dict)
+            path_dict[node] = new_paths.copy()
+        if type(new_paths[0]) is int:
+            # there is only one downstream path from current node
+            paths.append(new_paths)
+        else:
+            # there are multiple downstream paths from current node
+            for new_path in new_paths:
+                paths.append(new_path)
+    # LOG.info("Returning paths for node: %d", start)
+    return paths, path_dict
+
+
+def find_all_paths_helper(parent_to_child, source, q: Queue):
+    paths, _ = find_all_paths(parent_to_child, source)
+    # we ignore the returned path dictionary as we don't have use for it
+
+    if (type(paths[0])) == int:
+        # this will only happen with topologies with a single node and is therefore unlikely
+        q.put(paths, block=True)
+    else: # this is the more likely case, where each path is a list
+        for path in paths:
+            q.put(path, block=True)
+    q.put("Processing Complete")
+
+
+def multi_proc_path_helper(parent_to_child: dict, spouts: List) -> List:
+    """This is a helper function that creates a separate process for every spout
+    and uses that process to calculate all paths to sinks for that spout. This function is
+    expected to be compute intensive and so, multi-processing is required."""
+    paths: List = []
+    q = Queue()
+    processes = []
+    for spout in spouts:
+            p = Process(target=find_all_paths_helper, args=(parent_to_child, spout, q))
+            p.start()
+            processes.append(p)
+
+    LOG.info("Number of processes created: %d", len(processes))
+    counter = 0
+    while not q.empty() and counter < len(processes):
+        item = q.get(block=True)
+        if type(item) == str:
+            counter = counter + 1
+        else:
+            paths.append(item)
+
+    for process in processes:
+        process.join()
+    return paths
+
+
+def path_helper(parent_to_child: dict, spouts: List) -> List:
+    """This is a helper function that creates a separate process for every spout
+    and uses that process to calculate all paths to sinks for that spout. This function is
+    expected to be compute intensive and so, multi-processing is required."""
+    paths: List = []
+    path_dict = defaultdict()
+    for spout in spouts:
+        results, path_dict = find_all_paths(parent_to_child, spout, path_dict=path_dict)
+        for result in results:
+            paths.append(result)
+    return paths
+
 
 def get_all_paths(graph_client: GremlinClient, topology_id: str) -> List[List[str]]:
-    """ Gets all paths from sources to sinks.
+    """ This function first gets all spouts from gremlin. Then it creates a dictionary,
+    mapping all tasks to downstream tasks. It passes this dictionary along to another function
+    that calculates all paths from the provided spouts to sinks.
 
     Arguments:
         graph_client (GremlinClient): The client instance for the graph
@@ -31,17 +116,41 @@ def get_all_paths(graph_client: GremlinClient, topology_id: str) -> List[List[st
     Returns:
         All possible paths from sources to sinks.
     """
-    paths = graph_client.graph_traversal.V().hasLabel("spout").\
-        has("topology_id", topology_id).repeat(out("logically_connected").simplePath()).\
-        until(not_(outE("logically_connected"))).path().dedup().toList()
+    LOG.info("Graph size: %d vertices %d edges",
+             graph_client.graph_traversal.V().count().toList()[0],
+             graph_client.graph_traversal.E().count().toList()[0])
+    conn_type = "logically_connected"
+    start: dt.datetime = dt.datetime.now()
 
-    paths_list = [[] for x in range(len(paths))]
+    spouts = graph_client.graph_traversal.V().has("topology_id", topology_id).\
+        hasLabel("spout").where(outE(conn_type)).dedup().toList()
+    spout_tasks = []
+    parent_to_child = dict()
+    for spout in spouts:
+        downstream_task_vertices = [spout]
+        spout_tasks.append(graph_client.graph_traversal.V(spout).properties('task_id').value().next())
+        while len(downstream_task_vertices) != 0:
+            for vertex in downstream_task_vertices:
+                vertex_task_id = graph_client.graph_traversal.V(vertex).properties('task_id').value().next()
+                downstream_task_vertices = graph_client.graph_traversal.V(vertex).out(conn_type).dedup().toList()
+                downstream_task_ids = graph_client.graph_traversal.V(vertex).out(conn_type).properties(
+                    'task_id').value().dedup().toList()
+                if len(downstream_task_vertices) != 0:
+                    parent_to_child[vertex_task_id] = downstream_task_ids
 
-    for x in range(len(paths)):
-        for v in paths[x]:
-            paths_list[x].append(graph_client.graph_traversal.V().hasId(v).values('task_id').next())
+    if len(spout_tasks) > 10:
+        # do not do multi-processing as creating more than 10 processes might use up too much memory
+        paths: List = path_helper(parent_to_child, spout_tasks)
+    else:
+        # Fewer than 10 processes should be okay
+        paths: List = multi_proc_path_helper(parent_to_child, spout_tasks)
 
-    return paths_list
+    LOG.info("Number of paths returned: %d", len(paths))
+    end: dt.datetime = dt.datetime.now()
+    LOG.info("Time spent in fetching all paths: %d seconds", (end - start).total_seconds())
+
+    return paths
+
 
 def get_current_refs(graph_client: GremlinClient,
                      topology_id: str) -> List[str]:
@@ -130,6 +239,67 @@ def _build_graph(graph_client: GremlinClient, tracker_url: str, cluster: str,
     return topology_ref
 
 
+def read_paths(zk_config: Dict[str, any], topology_id: str, cluster: str, environ: str,) -> List:
+    zookeeper_url = zk_config["heron.statemgr.connection.string"]
+    parts = zookeeper_url.split(".")
+    parts[1] = cluster
+    zookeeper_url = ".".join(parts)
+
+    recent_topo_update_ts: dt.datetime = zookeeper.last_topo_update_ts(zookeeper_url,
+                                                                       zk_config["heron.statemgr.root.path"],
+                                                                       topology_id, zk_config["zk.time.offset"])
+    file_name = file_path_template.substitute(topology=topology_id,
+                                              cluster=cluster,
+                                              environ=environ,
+                                              time=recent_topo_update_ts.strftime('%m_%d_%Y_%I_%M_%S'))
+
+    with open(file_name) as file:
+        path_data = json.load(file)
+
+    return path_data["paths"]
+
+
+def paths_check(graph_client: GremlinClient, zk_config: Dict[str, any],
+                cluster: str, environ: str, topology_id: str):
+    """ Checks to see if we have a file containing all paths for the topology)
+
+        Arguments:
+            graph_client (GremlinClient): The client instance for the graph
+                                          database.
+            zk_config (dict):   A dictionary containing ZK config information.
+                                "heron.statemgr.connection.string" and
+                                "heron.statemgr.root.path" should be present.
+            cluster (str):  The name of the cluster the topology is running on.
+            environ (str):  The environment the topology is running in.
+            topology_id (str):  The topology ID string.
+        """
+
+    zookeeper_url = zk_config["heron.statemgr.connection.string"]
+    parts = zookeeper_url.split(".")
+    parts[1] = cluster
+    zookeeper_url = ".".join(parts)
+
+    LOG.info(zookeeper_url)
+    recent_topo_update_ts: dt.datetime = zookeeper.last_topo_update_ts(zookeeper_url,
+                                                                       zk_config["heron.statemgr.root.path"],
+                                                                       topology_id, zk_config["zk.time.offset"])
+
+    # test to see if a file exists with the right name
+    file_name = file_path_template.substitute(topology=topology_id,
+                                              cluster=cluster,
+                                              environ=environ,
+                                              time=recent_topo_update_ts.strftime('%m_%d_%Y_%I_%M_%S'))
+
+    LOG.info("Paths file: %s", file_name)
+    if not os.path.exists(file_name):
+        # fetch paths and then write to file
+        all_paths = get_all_paths(graph_client, topology_id)
+
+        # writing
+        with open(file_name, "w+") as file:
+            json.dump({'paths': all_paths}, file)
+
+
 def graph_check(graph_client: GremlinClient, zk_config: Dict[str, Any],
                 tracker_url: str, cluster: str, environ: str,
                 topology_id: str) -> str:
@@ -157,6 +327,13 @@ def graph_check(graph_client: GremlinClient, zk_config: Dict[str, Any],
     most_recent_graph: Optional[Tuple[str, dt.datetime]] = \
         most_recent_graph_ref(graph_client, topology_id)
 
+    zookeeper_url = zk_config["heron.statemgr.connection.string"]
+    parts = zookeeper_url.split(".")
+    parts[1] = cluster
+    zookeeper_url = ".".join(parts)
+
+    LOG.info("Zookeeper URL: %s", zookeeper_url)
+
     if not most_recent_graph:
 
         LOG.info("There are currently no physical graphs in the database "
@@ -167,7 +344,7 @@ def graph_check(graph_client: GremlinClient, zk_config: Dict[str, Any],
 
     elif not _physical_plan_still_current(
             topology_id, most_recent_graph[1],
-            zk_config["heron.statemgr.connection.string"],
+            zookeeper_url,
             zk_config["heron.statemgr.root.path"],
             zk_config["zk.time.offset"]):
 

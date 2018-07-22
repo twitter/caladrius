@@ -9,15 +9,16 @@ import logging
 from typing import List, Type, Dict, Any, Tuple
 
 import json
-from jsonschema import validate
+
 import pandas as pd
 
 from flask import request
 from flask_restful import Resource
 
+
 from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.gremlin.client import GremlinClient
-from caladrius.graph.utils.heron import graph_check
+from caladrius.graph.utils.heron import graph_check, paths_check
 from caladrius.model.topology.heron.base import HeronTopologyModel
 from caladrius.api import utils
 
@@ -182,11 +183,16 @@ class HeronCurrent(Resource):
                  request.args.get("cluster"), request.args.get("environ"),
                  str(request.args.getlist("model")))
 
+        cluster = request.args.get("cluster")
+        environ = request.args.get("environ")
         # Make sure we have a current graph representing the physical plan for
         # the topology
         graph_check(self.graph_client, self.model_config, self.tracker_url,
-                    request.args.get("cluster"), request.args.get("environ"),
-                    topology_id)
+                    cluster, environ, topology_id)
+
+        # Make sure we have a file containing all paths for the job
+        paths_check(self.graph_client, self.model_config, cluster,
+                    environ, topology_id)
 
         if "all" in request.args.getlist("model"):
             LOG.info("Running all configured Heron topology performance "
@@ -204,9 +210,9 @@ class HeronCurrent(Resource):
         model_kwargs.pop("model")
         model_kwargs.pop("cluster")
         model_kwargs.pop("environ")
-
-        cluster = request.args.get("cluster")
-        environ = request.args.get("environ")
+        model_kwargs["zk.time.offset"] = self.model_config["zk.time.offset"]
+        model_kwargs["heron.statemgr.root.path"] = self.model_config["heron.statemgr.root.path"]
+        model_kwargs["heron.statemgr.connection.string"] = self.model_config["heron.statemgr.connection.string"]
 
         output = {}
         for model_name in models:
@@ -221,7 +227,7 @@ class HeronCurrent(Resource):
             except Exception as err:
                 LOG.error("Error running model: %s -> %s", model.name,
                           str(err))
-                errors.append({"model": model.name, "type": str(type(err)),
+                errors.append({"model": model.name, "typce": str(type(err)),
                                "error": str(err)})
             else:
                 output[model_name] = json.dumps(results)
@@ -230,6 +236,7 @@ class HeronCurrent(Resource):
             return {"errors": errors}, 500
 
         return output, 200
+
 
 class HeronProposed(Resource):
     """ Resource class for predicting the change in performance of a topology if it's packing
@@ -280,85 +287,50 @@ class HeronProposed(Resource):
                  request.args.get("cluster"), request.args.get("environ"),
                  str(request.args.getlist("model")))
 
+        cluster = request.args.get("cluster")
+        environ = request.args.get("environ")
+
         # Make sure we have a current graph representing the physical plan for
         # the topology
         graph_check(self.graph_client, self.model_config, self.tracker_url,
-                    request.args.get("cluster"), request.args.get("environ"),
-                    topology_id)
+                    cluster, environ, topology_id)
 
-        # Get the proposed packing plan and parse it.
-        json_packing_plan = request.get_json()
-        validated: bool = self.validate_packing_plan(json_packing_plan)
+        # Make sure we have a file containing all paths for the job
+        paths_check(self.graph_client, self.model_config, cluster,
+                    environ, topology_id)
 
-        if validated:
-            LOG.info(json_packing_plan)
+        # Get the proposed packing plan
+        new_packing_plan = request.get_json()
 
-        ##TODO: Add code for comparison with current gpacking plans
+        if "all" in request.args.getlist("model"):
+            LOG.info("Running all configured Heron topology performance "
+                     "models")
+            models = self.models.keys()
+        else:
+            models = request.args.getlist("model")
 
-        return json_packing_plan
+        # Convert the request.args to a dict suitable for passing as **kwargs
+        model_kwargs: Dict[str, Any] = \
+            utils.convert_wimd_to_dict(request.args)
 
-    def validate_packing_plan(self, json_packing_plan) -> bool:
-        schema = {
-            "definitions": {
-                "resource": {
-                    "type": "object",
-                    "properties": {
-                        "cpu": {"type": "string"},
-                        "ram": {"type": "string"},
-                        "disk": {"type": "string"}
-                    },
-                    "required": ["cpu", "ram", "disk"]
-                },
-                "instance": {
-                    "properties": {
-                        "instance_resources": {
-                            "maxProperties": 1,
-                            "minProperties": 1,
-                            "$ref": "#/definitions/resource"},
-                        "component_name": {"type": "string"},
-                        "task_id": {"type": "string"}
-                    },
-                    "required": ["instance_resources", "component_name", "task_id"]
-                },
-                "container_plan": {
-                    "type": "object",
-                    "properties": {
-                        "scheduled_resources": {
-                            "maxProperties": 1,
-                            "minProperties": 1,
-                            "$ref": "#/definitions/resource"},
-                        "instances": {"type": "array",
-                                      "items": {
-                                          "$ref": "#/definitions/instance"}
-                                      },
-                        "required_resources": {
-                            "maxProperties": 1,
-                            "minProperties": 1,
-                            "$ref": "#/definitions/resource"}
-                    },
-                    "required": ["required_resources", "instances"]
-                }
-            },
-            "type": "object",
-            "properties": {
-                "container_plans": {
-                    "type": "array",
-                    "items": {
+        # Remove the models list from the kwargs as it is only needed by this method
+        model_kwargs.pop("model")
+        model_kwargs.pop("cluster")
+        model_kwargs.pop("environ")
+        model_kwargs["zk.time.offset"] = self.model_config["zk.time.offset"]
+        model_kwargs["heron.statemgr.root.path"] = self.model_config["heron.statemgr.root.path"]
+        model_kwargs["heron.statemgr.connection.string"] = self.model_config["heron.statemgr.connection.string"]
 
-                        "$ref": "#/definitions/container_plan"
-                    }
-                }
-            },
-            "required": ["container_plans"]
-        }
+        for model_name in models:
+            LOG.info("Running topology performance model %s", model_name)
+            model = self.models[model_name]
+            results: list = model.predict_proposed_performance(topology_id=topology_id,
+                                                               cluster=cluster,
+                                                               environ=environ,
+                                                               spout_traffic={},
+                                                               proposed_plan=new_packing_plan,
+                                                               **model_kwargs)
 
-        try:
-            validate(json_packing_plan, schema)
-
-        except Exception as err:
-            LOG.error("Error validating json: %s -> %s", json_packing_plan,  str(err))
-            return False
-
-        return True
+        return results
 
 

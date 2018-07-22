@@ -5,13 +5,12 @@
 """ This module models different queues and performs relevant calculations for it."""
 
 import datetime as dt
+from functools import lru_cache
 import pandas as pd
 
 from caladrius.metrics.client import MetricsClient
-from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.model.topology.heron.abs_queueing_models import QueueingModels
 from caladrius.model.topology.heron.helpers import *
-from caladrius.graph.utils.heron import get_all_paths
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -36,17 +35,18 @@ class MMCQueue(QueueingModels):
     distribution. An extension of this model is one with multiple servers (denoted by variable 'c')
     and is called an M/M/c queue.
     """
-    def __init__(self, metrics_client: MetricsClient, graph_client: GremlinClient, topology_id: str,
+    def __init__(self, metrics_client: MetricsClient, paths, topology_id: str,
                  cluster: str, environ: str, start: dt.datetime, end: dt.datetime, other_kwargs: dict):
         """
         This function initializes relevant variables to calculate queue related metrics
         given an M/M/c model.
         """
 
-        super().__init__(metrics_client, graph_client, topology_id, cluster, environ, start, end, other_kwargs)
+        super().__init__(metrics_client, paths, topology_id, cluster, environ, start, end, other_kwargs)
 
-        # find all end-to-end paths in topology
-        self.paths = get_all_paths(self.graph_client, topology_id)
+        # ensure that paths are populated
+        if len(self.paths) == 0:
+            raise Exception("Topology paths are unavailable")
 
         # Get the service time for all elements
         service_times: pd.DataFrame = self.metrics_client.get_service_times(
@@ -94,7 +94,7 @@ class GGCQueue(QueueingModels):
     more realistic scenarios as arrival rates and processing rates do not necessarily fit probabilistic
     distributions (such as the Poisson distribution, used to describe arrival rates in M/M/1 queues).
     """
-    def __init__(self, metrics_client: MetricsClient, graph_client: GremlinClient, topology_id: str,
+    def __init__(self, metrics_client: MetricsClient, paths: List, topology_id: str,
                  cluster: str, environ: str, start: dt.datetime, end: dt.datetime, other_kwargs: dict):
         """
         This function initializes relevant variables to calculate queue related metrics
@@ -106,10 +106,11 @@ class GGCQueue(QueueingModels):
         http://home.iitk.ac.in/~skb/qbook/Slide_Set_12.PDF and
         http://www.math.nsc.ru/LBRT/v1/foss/gg1_2803.pdf
         """
-        super().__init__(metrics_client, graph_client, topology_id, cluster, environ, start, end, other_kwargs)
+        super().__init__(metrics_client, paths, topology_id, cluster, environ, start, end, other_kwargs)
 
-        # find all end-to-end paths in topology
-        self.paths = get_all_paths(self.graph_client, topology_id)
+        # ensure that paths are populated
+        if len(self.paths) == 0:
+            raise Exception("Topology paths are unavailable")
 
         # Remove the start and end time kwargs so we don't supply them twice to
         # the metrics client.
@@ -118,15 +119,14 @@ class GGCQueue(QueueingModels):
         service_times: pd.DataFrame = self.metrics_client.get_service_times(
             topology_id, cluster, environ, start, end, **other_kwargs)
 
-        # Drop the system streams
-        service_times = (service_times[~service_times["stream"].str.contains("__")])
-
         # Get execute counts for all elements for validation
         execute_counts: pd.DataFrame = self.metrics_client.get_execute_counts(
             topology_id, cluster, environ, start, end, **other_kwargs)
 
         # Drop the system streams
         self.service_times = (service_times[~service_times["stream"].str.contains("__")])
+        if self.service_times.empty:
+            raise Exception("Service times for the topology are unavailable")
 
         # Get number of arrivals at stream managers
         tuple_arrivals: pd.DataFrame = self.metrics_client.get_tuple_arrivals_at_stmgr\
@@ -140,6 +140,7 @@ class GGCQueue(QueueingModels):
         self.service_rate = convert_service_times_to_rates(self.service_times)
         self.queue_size = pd.DataFrame
 
+    @lru_cache()
     def average_waiting_time(self) -> pd.DataFrame:
         merged: pd.DataFrame = self.service_stats.merge(self.inter_arrival_time_stats, on=["task"])
 
