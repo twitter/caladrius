@@ -153,6 +153,100 @@ def add_pplan_info(tracker_url: str,
     return pd.DataFrame(output)
 
 
+def add_logical_plan_info(tracker_url: str,
+                   topologies: pd.DataFrame = None) -> pd.DataFrame:
+    """ Combines information from the topology summary DataFrame with
+    information from the logical plan of each topology.
+
+    Arguments:
+        tracker_url (str):  The URL for the Heron Tracker API
+        topologies (pd.DataFrame):  The topologies summary from the heron
+                                    tracker can be supplied, if not it will
+                                    fetched fresh from the Tracker API.
+
+    Returns:
+        pandas.DataFrame:   The topologies summary DataFrame with logical plan
+        information added. This will return a new DataFrame and will not modify
+        the supplied DataFrame
+    """
+    if topologies is None:
+        topologies = tracker.get_topologies(tracker_url)
+    output: List[Dict] = []
+
+    for (cluster, environ, user), data in topologies.groupby(["cluster",
+                                                              "environ",
+                                                              "user"]):
+        for topology_id in data.topology:
+
+            try:
+                logical_plan: Dict[str, Any] = tracker.get_logical_plan(
+                    tracker_url, cluster, environ, topology_id)
+            except requests.HTTPError:
+                # If we cannot fetch the plan, skip this topology
+                continue
+
+            # there are two possible kinds of spouts:
+            spout_single_output = 0
+            spout_multiple_output = 0
+
+            # there are six possible kinds of bolts:
+            # two of which are sinks, and four are intermediate bolts
+            # sink types
+            bolt_single_in_zero_out = 0
+            bolt_multiple_in_zero_out = 0
+
+            # intermediate types:
+            bolt_single_in_single_out = 0
+            bolt_multiple_in_single_out = 0
+            bolt_single_in_multiple_out = 0
+            bolt_multiple_in_multiple_out = 0
+
+            row: Dict = {}
+            LOG.info("Topology ID: %s",  topology_id)
+            for key in logical_plan["spouts"].keys():
+                num_outputs = len(logical_plan["spouts"][key]["outputs"])
+                if num_outputs == 1:
+                    spout_single_output = spout_single_output + 1
+                else:
+                    spout_multiple_output = spout_multiple_output + 1
+            for key in logical_plan["bolts"].keys():
+                outputs = len(logical_plan["bolts"][key]["outputs"])
+                inputs = len(logical_plan["bolts"][key]["inputs"])
+
+                # sinks
+                if outputs == 0:
+                    if inputs == 1:
+                        bolt_single_in_zero_out = bolt_single_in_zero_out + 1
+                    elif inputs > 1:
+                        bolt_multiple_in_zero_out = bolt_multiple_in_zero_out + 1
+                elif outputs == 1:
+                    if inputs == 1:
+                        bolt_single_in_single_out = bolt_single_in_single_out + 1
+                    elif inputs > 1:
+                        bolt_multiple_in_single_out = bolt_multiple_in_single_out + 1
+                elif outputs > 1:
+                    if inputs == 1:
+                        bolt_single_in_multiple_out = bolt_single_in_multiple_out + 1
+                    elif inputs > 1:
+                        bolt_multiple_in_multiple_out = bolt_multiple_in_multiple_out + 1
+
+            row["topology"] = topology_id
+
+            row["spout_single_output"] = spout_single_output
+            row["spout_multiple_output"] = spout_multiple_output
+
+            row["bolt_single_in_zero_out"] = bolt_single_in_zero_out
+            row["bolt_multiple_in_zero_out"] = bolt_multiple_in_zero_out
+
+            row["bolt_single_in_single_out"] = bolt_single_in_single_out
+            row["bolt_multiple_in_single_out"] = bolt_multiple_in_single_out
+            row["bolt_single_in_multiple_out"] = bolt_single_in_multiple_out
+            row["bolt_multiple_in_multiple_out"] = bolt_multiple_in_multiple_out
+            output.append(row)
+
+    return pd.DataFrame(output)
+
+
 def _get_mg_summary(topo_pplan: pd.DataFrame, groupby_term: str):
 
     mg_summary: pd.DataFrame = pd.DataFrame(
@@ -246,6 +340,7 @@ if __name__ == "__main__":
     CREATE_TIME_FILE: str = os.path.join(ARGS.cache_dir, "created.pkl")
     TOPO_FILE: str = os.path.join(ARGS.cache_dir, "topo.pkl")
     TOPO_PPLAN_FILE: str = os.path.join(ARGS.cache_dir, "topo_pplan.pkl")
+    TOPO_LPLAN_FILE: str = os.path.join(ARGS.cache_dir, "topo_lplan.pkl")
     GROUPING_SUMMARY_FILE: str = os.path.join(ARGS.cache_dir,
                                               "grouping_summary.pkl")
 
@@ -278,6 +373,11 @@ if __name__ == "__main__":
                  TOPO_PPLAN_FILE)
         TOPO_PPLAN.to_pickle(TOPO_PPLAN_FILE)
 
+        # Add logical plan information
+        TOPO_LPLAN: pd.DataFrame = add_logical_plan_info(TRACKER_URL, TOPOLOGIES)
+        LOG.info("Caching topology logical plan data at %s",
+                 TOPO_LPLAN_FILE)
+        TOPO_LPLAN.to_pickle(TOPO_LPLAN_FILE)
         # Get the stream grouping summary
         GROUPING_SUMMARY: pd.DataFrame = summarise_groupings(TRACKER_URL,
                                                              TOPOLOGIES)
@@ -308,6 +408,10 @@ if __name__ == "__main__":
         LOG.info("Loading topology physical plan data from %s",
                  TOPO_PPLAN_FILE)
         TOPO_PPLAN = pd.read_pickle(TOPO_PPLAN_FILE)
+
+        LOG.info("Loading topology logical plan data from %s",
+                 TOPO_PPLAN_FILE)
+        TOPO_LPLAN = pd.read_pickle(TOPO_LPLAN_FILE)
 
         LOG.info("Loading stream grouping summary data from %s",
                  GROUPING_SUMMARY_FILE)
@@ -349,6 +453,28 @@ if __name__ == "__main__":
     # By Environment
     MG_BY_ENV: pd.DataFrame = _get_mg_summary(TOPO_PPLAN, "environ")
 
+    # Topology structure stats
+    LINEAR_TOPOS = TOPO_LPLAN[(TOPO_LPLAN['spout_multiple_output'] == 0) &
+                              (TOPO_LPLAN['bolt_multiple_in_zero_out'] == 0) &
+                              (TOPO_LPLAN['bolt_multiple_in_multiple_out'] == 0) &
+                              (TOPO_LPLAN['bolt_multiple_in_single_out'] == 0) &
+                              (TOPO_LPLAN['bolt_single_in_multiple_out'] == 0)].reset_index().shape[0] \
+                   / TOTAL_TOPOS * 100
+
+    # We look for the most common type of operator
+    SPOUT_MULTIPLE_OUTPUTS = \
+        TOPO_LPLAN[(TOPO_LPLAN['spout_multiple_output'] > 0)].reset_index().shape[0] / TOTAL_TOPOS * 100
+    SINK_MULTIPLE_INPUTS = \
+        TOPO_LPLAN[(TOPO_LPLAN['bolt_multiple_in_zero_out'] > 0)].reset_index().shape[0] / TOTAL_TOPOS * 100
+    BOLT_MULTIPLE_IN_OUT = \
+        TOPO_LPLAN[(TOPO_LPLAN['bolt_multiple_in_multiple_out'] > 0)].reset_index().shape[0] / TOTAL_TOPOS * 100
+    BOLT_MULTIPLE_IN_SINGLE_OUT = \
+        TOPO_LPLAN[(TOPO_LPLAN['bolt_multiple_in_single_out'] > 0)].reset_index().shape[0] / TOTAL_TOPOS * 100
+    BOLT_SINGLE_IN_MULTIPLE_OUT = \
+        TOPO_LPLAN[(TOPO_LPLAN['bolt_single_in_multiple_out'] > 0)].reset_index().shape[0] / TOTAL_TOPOS * 100
+    # We look for topologies that have both of the most common non-linear operator types:
+    COMMON = TOPO_LPLAN[(TOPO_LPLAN['bolt_multiple_in_single_out'] > 0) &
+                        (TOPO_LPLAN['bolt_multiple_in_zero_out'] > 0)].reset_index()
     # Grouping stats
     JUST_GROUPINGS: pd.DataFrame = \
         (GROUPING_SUMMARY.drop(["topology", "cluster", "environ", "user"],
@@ -436,6 +562,27 @@ if __name__ == "__main__":
           [["topology", "cluster", "environ", "user", "total_components",
             "stmgrs", "total_spouts", "total_bolts", "total_instances"]]
           .head(20).to_string(index=False), file=OUT_FILE)
+
+    print("\n-------------------", file=OUT_FILE)
+    print("Topology structure stats:\n", file=OUT_FILE)
+    print("\nPercentage of topologies with linear structure: ",
+          LINEAR_TOPOS, file=OUT_FILE)
+    print("\nPercentage of topologies with spouts with multiple outputs: ",
+          SPOUT_MULTIPLE_OUTPUTS, file=OUT_FILE)
+    print("\nPercentage of topologies with sinks with multiple inputs: ",
+          SINK_MULTIPLE_INPUTS, file=OUT_FILE)
+    print("\nPercentage of topologies with bolts with multiple inputs"
+          " and outputs: ",
+          BOLT_MULTIPLE_IN_OUT, file=OUT_FILE)
+    print("\nPercentage of topologies with bolts with multiple inputs"
+          " and a single output: ",
+          BOLT_MULTIPLE_IN_SINGLE_OUT, file=OUT_FILE)
+    print("\nPercentage of topologies with bolts with single input "
+          "and multiple outputs: ",
+          BOLT_SINGLE_IN_MULTIPLE_OUT, file=OUT_FILE)
+    print("\nPercentage of topologies with both intermediate bolts with"
+          " multiple inputs and sinks with multiple inputs: ",
+          COMMON.shape[0]/TOTAL_TOPOS * 100, file=OUT_FILE)
 
     print("\n-------------------", file=OUT_FILE)
     print("Message guarantee stats:\n", file=OUT_FILE)
