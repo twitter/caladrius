@@ -52,8 +52,11 @@ def most_recent_graph_ref(graph_client: GremlinClient, topology_id: str
 
     Returns:
         A 2-tuple where the first item is the topology reference string and the
-        second if the graph creation datetime.
+        second is the graph creation datetime.
     """
+
+    LOG.info("Finding the most recent graph reference for topology: %s",
+             topology_id)
 
     current_refs: List[str] = get_current_refs(graph_client, topology_id)
 
@@ -76,6 +79,9 @@ def _physical_plan_still_current(topology_id: str,
                                  most_recent_graph_ts: dt.datetime,
                                  zk_connection: str, zk_root_node: str,
                                  zk_time_offset: int) -> bool:
+
+    LOG.info("Checking if the physical plan in the graph database for "
+             "topology: %s is still current", topology_id)
 
     recent_topo_update_ts: dt.datetime = \
         zookeeper.last_topo_update_ts(zk_connection, zk_root_node, topology_id,

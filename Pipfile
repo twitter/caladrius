@@ -11,6 +11,7 @@ pyyaml = "*"
 gremlinpython = "*"
 matplotlib = "*"
 fbprophet = "*"
+kazoo = "*"
 
 [dev-packages]
 ipython = "*"
