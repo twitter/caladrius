@@ -43,6 +43,8 @@ heron.traffic.models.config:
     heron.statemgr.root.path: 'tree/storm/heron/states'
     zk.time.offset: -5
     prophet.model.default.future.mins: 30
+    # 60 has units seconds
+    prophet.model.default.metrics_sample_period: 60
     prophet.model.default.source.hours: 24
     prophet.model.quantiles:
         - 10

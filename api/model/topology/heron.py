@@ -4,23 +4,21 @@
 
 """ This is the rooting logic for the Apache Heron topology performance
 modelling API """
-import logging
-
-from typing import List, Type, Dict, Any, Tuple
-
-import json
-
-import pandas as pd
-
 from flask import request
 from flask_restful import Resource
+import logging
+import json
+import pandas as pd
+from typing import List, Type, Dict, Any, Tuple
 
-
-from caladrius.metrics.heron.client import HeronMetricsClient
+from caladrius.api import utils
 from caladrius.graph.gremlin.client import GremlinClient
 from caladrius.graph.utils.heron import graph_check, paths_check
+from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.model.topology.heron.base import HeronTopologyModel
-from caladrius.api import utils
+from caladrius.model.topology.heron.queueing_theory import get_start_end_times
+from caladrius.traffic_provider.predicted_traffic import PredictedTraffic
+from caladrius.traffic_provider.current_traffic import CurrentTraffic
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -214,6 +212,9 @@ class HeronCurrent(Resource):
         model_kwargs["heron.statemgr.root.path"] = self.model_config["heron.statemgr.root.path"]
         model_kwargs["heron.statemgr.connection.string"] = self.model_config["heron.statemgr.connection.string"]
 
+        start, end = get_start_end_times(**model_kwargs)
+        traffic_provider: CurrentTraffic = CurrentTraffic(self.metrics_client, topology_id, cluster, environ,
+                                                          start, end, **model_kwargs)
         output = {}
         for model_name in models:
             LOG.info("Running topology performance model %s", model_name)
@@ -221,13 +222,15 @@ class HeronCurrent(Resource):
             model = self.models[model_name]
 
             try:
-                results: list = model.find_current_instance_waiting_times(
-                    topology_id=topology_id, cluster=cluster,
-                    environ=environ, **model_kwargs)
+                results: list = model.find_current_instance_waiting_times(topology_id=topology_id, cluster=cluster,
+                                                                          environ=environ,
+                                                                          traffic_source=traffic_provider,
+                                                                          start=start, end=end,
+                                                                          **model_kwargs)
             except Exception as err:
                 LOG.error("Error running model: %s -> %s", model.name,
                           str(err))
-                errors.append({"model": model.name, "typce": str(type(err)),
+                errors.append({"model": model.name, "type": str(type(err)),
                                "error": str(err)})
             else:
                 output[model_name] = json.dumps(results)
@@ -239,10 +242,10 @@ class HeronCurrent(Resource):
 
 
 class HeronProposed(Resource):
-    """ Resource class for predicting the change in performance of a topology if it's packing
-        plan were changed to the provided packing plan.  """
+    """ Resource class for predicting a new packing plan for the topology, given its current or
+    future traffic.  """
 
-    def __init__(self, model_classes: List[Type], model_config: Dict[str, Any],
+    def __init__(self, model_classes: List[Type], model_config: Dict[str, Any], traffic_config: Dict[str, Any],
                  metrics_client: HeronMetricsClient,
                  graph_client: GremlinClient, tracker_url: str) -> None:
         self.metrics_client: HeronMetricsClient = metrics_client
@@ -250,16 +253,20 @@ class HeronProposed(Resource):
 
         self.tracker_url: str = tracker_url
         self.model_config: Dict[str, Any] = model_config
+        self.traffic_config: Dict[str, Any] = traffic_config
 
         self.models: Dict[str, HeronTopologyModel] = {}
         for model_class in model_classes:
             model = model_class(model_config, metrics_client, graph_client)
             self.models[model.name] = model
 
+        self.CURRENT = "current"
+        self.FUTURE = "future"
+
         super().__init__()
 
-    def post(self, topology_id: str):
-        """ Method handling POST requests to the current topology performance
+    def get(self, topology_id: str, traffic_source: str):
+        """ Method handling get requests to the current topology packing plan
             modelling endpoint."""
 
         # Checking to make sure we have required arguments
@@ -299,9 +306,6 @@ class HeronProposed(Resource):
         paths_check(self.graph_client, self.model_config, cluster,
                     environ, topology_id)
 
-        # Get the proposed packing plan
-        new_packing_plan = request.get_json()
-
         if "all" in request.args.getlist("model"):
             LOG.info("Running all configured Heron topology performance "
                      "models")
@@ -317,19 +321,43 @@ class HeronProposed(Resource):
         model_kwargs.pop("model")
         model_kwargs.pop("cluster")
         model_kwargs.pop("environ")
+
+        start, end = get_start_end_times(**model_kwargs)
+
+        # traffic source can be one of two values -- current or future. If it is of a future value, we must first
+        # create an object that gathers together future traffic information. Otherwise, if it is current, then we
+        # simply propose a packing plan based on current information
+        if traffic_source == self.CURRENT:
+            traffic_provider: CurrentTraffic = CurrentTraffic(self.metrics_client, topology_id, cluster, environ,
+                                                              start, end, **model_kwargs)
+        elif traffic_source == self.FUTURE:
+            # the predicted traffic variable is initialized by the future traffic. It contains functions to convert
+            # the predicted traffic into arrival rates
+            traffic_provider: PredictedTraffic = PredictedTraffic(self.metrics_client, self.graph_client,
+                                                                  topology_id, cluster, environ, start, end,
+                                                                  self.traffic_config, **model_kwargs)
+
+        else:
+            errors.append(
+                {"type": "ValueError", "error": (f"{traffic_source} is an incorrect URI. Please either specify"
+                                                 f" future or current as possible values and provide parameters"
+                                                 f" accordingly.")})
+            return errors, 400
+
         model_kwargs["zk.time.offset"] = self.model_config["zk.time.offset"]
         model_kwargs["heron.statemgr.root.path"] = self.model_config["heron.statemgr.root.path"]
         model_kwargs["heron.statemgr.connection.string"] = self.model_config["heron.statemgr.connection.string"]
 
         for model_name in models:
-            LOG.info("Running topology performance model %s", model_name)
+            LOG.info("Running topology packing plan model %s", model_name)
             model = self.models[model_name]
-            results: list = model.predict_proposed_performance(topology_id=topology_id,
-                                                               cluster=cluster,
-                                                               environ=environ,
-                                                               spout_traffic={},
-                                                               proposed_plan=new_packing_plan,
-                                                               **model_kwargs)
+            results: list = model.predict_packing_plan(topology_id=topology_id,
+                                                       cluster=cluster,
+                                                       environ=environ,
+                                                       start=start,
+                                                       end=end,
+                                                       traffic_provider=traffic_provider,
+                                                       **model_kwargs)
 
         return results
 

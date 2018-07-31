@@ -24,7 +24,7 @@ class Predictor(object):
     """ Abstract base class for performance predictors """
     def __init__(self, topology_id: str, cluster: str, environ: str,
                  start: [dt.datetime], end: [dt.datetime], tracker_url: str, metrics_client: MetricsClient,
-                 graph_client: GremlinClient, proposed_plan: Any, queue: QueueingModels, **kwargs: Any) -> None:
+                 graph_client: GremlinClient, queue: QueueingModels, **kwargs: Any) -> None:
 
         self.metrics_client: MetricsClient = metrics_client
         self.graph_client: GremlinClient = graph_client
@@ -36,10 +36,6 @@ class Predictor(object):
         self.end = end
         self.kwargs = kwargs
 
-        # verify the proposed plan meets the format
-        new_packing_plan = proposed_plan
-        util.validate_packing_plan(new_packing_plan)
-
         current_packing_plan = json.loads(tracker.get_packing_plan(
             tracker_url, cluster, environ, topology_id))
         del current_packing_plan["id"]
@@ -50,13 +46,9 @@ class Predictor(object):
             pd.DataFrame.from_records(util.summarize_packing_plans(current_packing_plan),
                                       index=util.InstanceInfo._fields).transpose().reset_index().\
                                       rename(columns={'index':'instance'})
-        self.new_plan: pd.DataFrame = \
-            pd.DataFrame.from_records(util.summarize_packing_plans(new_packing_plan),
-                                      index=util.InstanceInfo._fields).transpose().reset_index().\
-                                      rename(columns={'index':'instance'})
 
     @abstractmethod
-    def evaluate_new_plan(self) -> Dict[str, Any]:
+    def create_new_plan(self) -> Dict[str, Any]:
         """ Predicts the performance of the new packing plan by 1) finding
         out the performance of the current plan, 2) finding out where the
         new plan is different 3) analysing how that might impact the new

@@ -19,13 +19,13 @@ from caladrius.performance_prediction.predictor import Predictor
 class SimplePredictor(Predictor):
     def __init__(self, topology_id: str, cluster: str, environ: str,
                  start: [dt.datetime], end: [dt.datetime], tracker_url: str, metrics_client: MetricsClient,
-                 graph_client: GremlinClient, proposed_plan: Any, queue: QueueingModels, **kwargs: Any):
+                 graph_client: GremlinClient, queue: QueueingModels, **kwargs: Any):
         super().__init__(topology_id, cluster, environ, start, end, tracker_url,
-                         metrics_client, graph_client, proposed_plan, queue, **kwargs)
+                         metrics_client, graph_client, queue, **kwargs)
         self.GC_TIME_THRESHOLD = 500  # units --> ms
         self.CPU_LOAD_THRESHOLD = 0.7  # load per core
 
-    def evaluate_new_plan(self) -> json:
+    def create_new_plan(self) -> json:
         """ Predicts the performance of the new packing plan by 1) finding
         out the performance of the current plan, 2) finding out where the
         new plan is different 3) analysing how that might impact the new

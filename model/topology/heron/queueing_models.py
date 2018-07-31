@@ -11,6 +11,7 @@ import pandas as pd
 from caladrius.metrics.client import MetricsClient
 from caladrius.model.topology.heron.abs_queueing_models import QueueingModels
 from caladrius.model.topology.heron.helpers import *
+from traffic_provider.trafficprovider import TrafficProvider
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -95,7 +96,8 @@ class GGCQueue(QueueingModels):
     distributions (such as the Poisson distribution, used to describe arrival rates in M/M/1 queues).
     """
     def __init__(self, metrics_client: MetricsClient, paths: List, topology_id: str,
-                 cluster: str, environ: str, start: dt.datetime, end: dt.datetime, other_kwargs: dict):
+                 cluster: str, environ: str, start: dt.datetime, end: dt.datetime,
+                 traffic_provider: TrafficProvider, other_kwargs: dict):
         """
         This function initializes relevant variables to calculate queue related metrics
         given a G/G/c model
@@ -129,14 +131,10 @@ class GGCQueue(QueueingModels):
             raise Exception("Service times for the topology are unavailable")
 
         # Get number of arrivals at stream managers
-        tuple_arrivals: pd.DataFrame = self.metrics_client.get_tuple_arrivals_at_stmgr\
-            (topology_id, cluster, environ, start, end, **other_kwargs)
-
-        self.tuple_arrivals: pd.DataFrame = tuple_arrivals
         self.execute_counts: pd.DataFrame = execute_counts
-        self.inter_arrival_time_stats: pd.DataFrame = convert_throughput_to_inter_arr_times(self.tuple_arrivals)
         self.service_stats: pd.DataFrame = process_execute_latencies(self.service_times)
-        self.arrival_rate = convert_arr_rate_to_mean_arr_rate(self.tuple_arrivals)
+        self.arrival_rate = traffic_provider.arrival_rates()
+        self.inter_arrival_time_stats: pd.DataFrame = traffic_provider.inter_arrival_times()
         self.service_rate = convert_service_times_to_rates(self.service_times)
         self.queue_size = pd.DataFrame
 
@@ -153,18 +151,20 @@ class GGCQueue(QueueingModels):
         return merged
 
     def average_queue_size(self) -> pd.DataFrame:
-        # complete by calling little's law
-
+        # complete by calling little's laws
         merged: pd.DataFrame = self.arrival_rate.merge(self.service_rate, on=["task"])
         average_waiting_time = self.average_waiting_time()
         average_waiting_time = average_waiting_time[["task", "mean_waiting_time"]]
         merged = merged.merge(average_waiting_time, on=["task"])
         self.queue_size: pd.DataFrame = littles_law(merged)
 
-        self.queue_size["scaled-queue-size"] = self.queue_size["queue-size"] * 60 * 1000 # because it was calculated per ms
-        LOG.info(self.queue_size[["task", "mean_waiting_time", "mean_arrival_rate", "scaled-queue-size", "queue-size"]])
-        validate_queue_size(self.execute_counts, self.tuple_arrivals)
-
+        # TODO: this is validation code and should be moved to test case runners
+        #  This is a rough validation because data arrives per minute
+        # self.queue_size["scaled-queue-size"] =\
+        #     self.queue_size["queue-size"] * 60 * 1000 # because it was calculated per ms
+        # LOG.info(self.queue_size[["task",
+        #                           "mean_waiting_time", "mean_arrival_rate", "scaled-queue-size", "queue-size"]])
+        # validate_queue_size(self.execute_counts, self.tuple_arrivals)
         return self.queue_size
 
     def end_to_end_latencies(self) -> list:

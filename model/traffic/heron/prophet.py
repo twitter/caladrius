@@ -241,15 +241,25 @@ class ProphetTrafficModel(HeronTrafficModel):
                         self.default_source_hours)
 
         if "prophet.model.default.future.mins" in config:
-
-            self.default_future_mins: int = \
+            self.default_future_minutes: int = \
                 config["prophet.model.default.future.mins"]
 
         else:
-            self.default_future_minuets = 30
+            self.default_future_minutes = 30
             LOG.warning("Default future minutes parameter was not supplied "
                         "via configuration file. Setting to %d minutes.",
-                        self.default_future_mins)
+                        self.default_future_minutes)
+
+        if "prophet.model.default.metrics_sample_period" in config:
+            self.default_metrics_sample_period: int = \
+                config["prophet.model.default.metrics_sample_period"]
+
+        else:
+            self.default_metrics_sample_period = 60
+            LOG.warning("Default metrics sample period parameter was not supplied "
+                        "via configuration file. Setting to %d minutes.",
+                        self.default_metrics_sample_period)
+
 
         if "prophet.model.quantiles" in config:
             self.quantiles: List[int] = config["prophet.model.quantiles"]
@@ -279,8 +289,8 @@ class ProphetTrafficModel(HeronTrafficModel):
             LOG.warning("future_mins parameter (indicating how many minutes "
                         "into the future traffic should be predicted was not "
                         "provided, using default value of %d minutes",
-                        self.default_future_mins)
-            future_mins: int = self.default_future_mins
+                        self.default_future_minutes)
+            future_mins: int = self.default_future_minutes
         else:
             future_mins = cast(int, int(kwargs["future_mins"]))
 
@@ -294,12 +304,9 @@ class ProphetTrafficModel(HeronTrafficModel):
             time_period_sec: float = \
                 cast(float, float(kwargs["metrics_sample_period"]))
         else:
-            sample_period_err: str = \
-                ("Inferring metric sample period is not yet supported. Please "
-                 "supply the period which the metrics timeseries is reported "
-                 "in.")
-            LOG.error(sample_period_err)
-            raise NotImplementedError(sample_period_err)
+            LOG.warning("metrics_sample_period (indicating the period of time the metrics client retrieves metrics for)"
+                        " was not supplied. Using default value of %d seconds.", self.default_metrics_sample_period)
+            time_period_sec: int = self.default_metrics_sample_period
 
         output: Dict[str, Any] = {}
 
@@ -368,5 +375,4 @@ class ProphetTrafficModel(HeronTrafficModel):
                      time_period_sec)
 
         output["instances"] = instances
-
         return output
