@@ -6,18 +6,14 @@
 modelling """
 
 import logging
-
-from typing import List, Dict, Type, Any, Tuple
-
-import pandas as pd
-
 from flask import request
 from flask_restful import Resource
+from typing import List, Dict, Type, Any, Tuple
 
 from caladrius.api import utils
+from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.model.traffic.heron.base import HeronTrafficModel
 from caladrius.graph.gremlin.client import GremlinClient
-from caladrius.metrics.heron.client import HeronMetricsClient
 from caladrius.graph.utils.heron import graph_check
 
 LOG: logging.Logger = logging.getLogger(__name__)

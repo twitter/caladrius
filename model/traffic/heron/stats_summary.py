@@ -75,12 +75,7 @@ class StatsSummaryTrafficModel(HeronTrafficModel):
             **metric_sample_period (float): This is an optional argument
                                             specifying the period (seconds) of
                                             the metrics returned by the metrics
-                                            client. If this is not supplied
-                                            this method will try to infer the
-                                            period from the returned metric.
-                                            However this will require
-                                            additional computation and is
-                                            susceptible to errors.
+                                            client.
         Returns:
             dict:   A dictionary with top level keys for "components" which
             links to summary statistics for each spout instance and "instances"

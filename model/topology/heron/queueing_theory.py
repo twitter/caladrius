@@ -21,6 +21,7 @@ from caladrius.graph.analysis.heron import arrival_rates
 from caladrius.graph.utils.heron import graph_check, read_paths
 from caladrius.performance_prediction.predictor import Predictor
 from caladrius.performance_prediction.simple_predictor import SimplePredictor
+from caladrius.traffic_provider.trafficprovider import TrafficProvider
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -81,40 +82,9 @@ class QTTopologyModel(HeronTopologyModel):
         return in_ars, strmgr_ars
 
     def find_current_instance_waiting_times(self, topology_id: str, cluster: str,
-                                            environ: str, **kwargs: Any) -> list:
-
-        if "start" in kwargs and "end" in kwargs:
-            start_ts: int = int(kwargs["start"])
-            start: dt.datetime = dt.datetime.utcfromtimestamp(start_ts)
-            end_ts: int = int(kwargs["end"])
-            end: dt.datetime = dt.datetime.utcfromtimestamp(end_ts)
-            LOG.info("Start and end time stamps supplied, using metric "
-                     "gathering period from %s to %s", start.isoformat(),
-                     end.isoformat())
-        elif "start" in kwargs and "end" not in kwargs:
-            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-            start_ts = int(kwargs["start"])
-            start = dt.datetime.utcfromtimestamp(start_ts)
-            LOG.info("Only start time (%s) was supplied. Setting end time to "
-                     "UTC now: %s", start.isoformat(), end.isoformat())
-        elif "source_hours" in kwargs:
-            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-            start = end - dt.timedelta(hours=int(kwargs["source_hours"]))
-            LOG.info("Source hours provided, using metric gathering period "
-                     "from %s to %s", start.isoformat(), end.isoformat())
-        elif "source_mins" in kwargs:
-            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-            start = end - dt.timedelta(minutes=int(kwargs["source_mins"]))
-            LOG.info("Source mins provided, using metric gathering period "
-                     "from %s to %s", start.isoformat(), end.isoformat())
-
-        else:
-            err_msg: str = ("Neither 'start', 'end' or 'source_hours' "
-                            "key word arguments were supplied. Either 'start',"
-                            " 'start' and 'end' or 'source_hours' should be "
-                            "provided")
-            LOG.error(err_msg)
-            raise RuntimeError(err_msg)
+                                            environ: str, traffic_source: TrafficProvider,
+                                            start: dt.datetime, end: dt.datetime,
+                                            **kwargs: Any) -> list:
 
         LOG.info("Calculating end to end performance latency of topology "
                  "%s using queueing theory", topology_id)
@@ -128,7 +98,7 @@ class QTTopologyModel(HeronTopologyModel):
         paths = read_paths(other_kwargs, topology_id, cluster, environ)
 
         queue: QueueingModels = GGCQueue(self.metrics_client, paths,
-                                         topology_id, cluster, environ, start, end, other_kwargs)
+                                         topology_id, cluster, environ, start, end, traffic_source, other_kwargs)
         return queue.end_to_end_latencies()
 
     def predict_current_performance(
@@ -136,7 +106,6 @@ class QTTopologyModel(HeronTopologyModel):
             spout_traffic: Dict[int, Dict[str, float]],
             **kwargs: Any) -> pd.DataFrame:
         """
-
         Arguments:
             topology_id (str): The topology identification string
             spout_traffic (dict):   The expected output of the spout instances.
@@ -144,36 +113,8 @@ class QTTopologyModel(HeronTopologyModel):
                                     second (tps) otherwise they will not match
                                     with the service time measurements.
         """
-
         # TODO: check spout traffic keys are integers!
-
-        if "start" in kwargs and "end" in kwargs:
-            start_ts: int = int(kwargs["start"])
-            start: dt.datetime = dt.datetime.utcfromtimestamp(start_ts)
-            end_ts: int = int(kwargs["end"])
-            end: dt.datetime = dt.datetime.utcfromtimestamp(end_ts)
-            LOG.info("Start and end time stamps supplied, using metric "
-                     "gathering period from %s to %s", start.isoformat(),
-                     end.isoformat())
-        elif "start" in kwargs and "end" not in kwargs:
-            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-            start_ts = int(kwargs["start"])
-            start = dt.datetime.utcfromtimestamp(start_ts)
-            LOG.info("Only start time (%s) was supplied. Setting end time to "
-                     "UTC now: %s", start.isoformat(), end.isoformat())
-        elif "source_hours" in kwargs:
-            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-            start = end - dt.timedelta(hours=int(kwargs["source_hours"]))
-            LOG.info("Source hours provided, using metric gathering period "
-                     "from %s to %s", start.isoformat(), end.isoformat())
-
-        else:
-            err_msg: str = ("Neither 'start', 'end' or 'source_hours' "
-                            "key word arguments were supplied. Either 'start',"
-                            " 'start' and 'end' or 'source_hours' should be "
-                            "provided")
-            LOG.error(err_msg)
-            raise RuntimeError(err_msg)
+        start, end = get_start_end_times(**kwargs)
 
         metric_bucket_length: int = cast(int,
                                          self.config["metric.bucket.length"])
@@ -229,48 +170,11 @@ class QTTopologyModel(HeronTopologyModel):
 
         return combined
 
-    def predict_proposed_performance(
-            self, topology_id: str, cluster: str, environ: str,
-            spout_traffic: Dict[int, Dict[str, float]],
-            proposed_plan: Any, **kwargs: Any) -> Dict[str, Any]:
+    def predict_packing_plan(self, topology_id: str, cluster: str, environ: str, start: dt.datetime,
+                             end: dt.datetime, traffic_provider: TrafficProvider, **kwargs: Any) -> Dict[str, Any]:
 
-        if "start" in kwargs and "end" in kwargs:
-            start_ts: int = int(kwargs["start"])
-            start: dt.datetime = dt.datetime.utcfromtimestamp(start_ts)
-            end_ts: int = int(kwargs["end"])
-            end: dt.datetime = dt.datetime.utcfromtimestamp(end_ts)
-            LOG.info("Start and end time stamps supplied, using metric "
-                     "gathering period from %s to %s", start.isoformat(),
-                     end.isoformat())
-        elif "start" in kwargs and "end" not in kwargs:
-            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-            start_ts = int(kwargs["start"])
-            start = dt.datetime.utcfromtimestamp(start_ts)
-            LOG.info("Only start time (%s) was supplied. Setting end time to "
-                     "UTC now: %s", start.isoformat(), end.isoformat())
-        elif "source_hours" in kwargs:
-            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-            start = end - dt.timedelta(hours=int(kwargs["source_hours"]))
-            LOG.info("Source hours provided, using metric gathering period "
-                     "from %s to %s", start.isoformat(), end.isoformat())
-        elif "source_mins" in kwargs:
-            end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-            start = end - dt.timedelta(minutes=int(kwargs["source_mins"]))
-            LOG.info("Source mins provided, using metric gathering period "
-                     "from %s to %s", start.isoformat(), end.isoformat())
-
-        else:
-            err_msg: str = ("Neither 'start', 'end' or 'source_hours' "
-                            "key word arguments were supplied. Either 'start',"
-                            " 'start' and 'end' or 'source_hours' should be "
-                            "provided")
-            LOG.error(err_msg)
-            raise RuntimeError(err_msg)
-
-        LOG.info("Calculating performance of topology %s based on packing plan %s,"
-                 " based on performance from %s to %s", topology_id, str(proposed_plan),
-                 str(start), str(end))
-
+        LOG.info("Calculating a new packing plan of the topology %s, based on performance from %s to %s",
+                 topology_id, str(start), str(end))
         # Remove the start and end time kwargs so we don't supply them twice to
         # the metrics client.
         other_kwargs: Dict[str, Any] = {key: value
@@ -281,10 +185,46 @@ class QTTopologyModel(HeronTopologyModel):
         # TODO -- pass in a metrics source to the queue that can also give future times
         queue: QueueingModels = GGCQueue(self.metrics_client, paths,
                                          topology_id, cluster, environ,
-                                         start, end, other_kwargs)
+                                         start, end, traffic_provider, other_kwargs)
         p: Predictor = SimplePredictor(topology_id, cluster, environ, start,
                                        end, self.tracker_url, self.metrics_client, self.graph_client,
-                                       proposed_plan, queue, **other_kwargs)
+                                       queue, **other_kwargs)
 
-        return p.evaluate_new_plan()
+        return p.create_new_plan()
 
+
+def get_start_end_times(**kwargs) -> (dt.datetime, dt.datetime):
+    if "start" in kwargs and "end" in kwargs:
+        start_ts: int = int(kwargs["start"])
+        start: dt.datetime = dt.datetime.utcfromtimestamp(start_ts)
+        end_ts: int = int(kwargs["end"])
+        end: dt.datetime = dt.datetime.utcfromtimestamp(end_ts)
+        LOG.info("Start and end time stamps supplied, using metric "
+                 "gathering period from %s to %s", start.isoformat(),
+                 end.isoformat())
+    elif "start" in kwargs and "end" not in kwargs:
+        end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+        start_ts = int(kwargs["start"])
+        start = dt.datetime.utcfromtimestamp(start_ts)
+        LOG.info("Only start time (%s) was supplied. Setting end time to "
+                 "UTC now: %s", start.isoformat(), end.isoformat())
+    elif "source_hours" in kwargs:
+        end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+        start = end - dt.timedelta(hours=int(kwargs["source_hours"]))
+        LOG.info("Source hours provided, using metric gathering period "
+                 "from %s to %s", start.isoformat(), end.isoformat())
+    elif "source_mins" in kwargs:
+        end = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+        start = end - dt.timedelta(minutes=int(kwargs["source_mins"]))
+        LOG.info("Source mins provided, using metric gathering period "
+                 "from %s to %s", start.isoformat(), end.isoformat())
+
+    else:
+        err_msg: str = ("Neither 'start', 'end' or 'source_hours' or 'source_mins' "
+                        "key word arguments were supplied. Either 'start',"
+                        " 'start' and 'end' or 'source_hours' should be "
+                        "provided")
+        LOG.error(err_msg)
+        raise RuntimeError(err_msg)
+
+    return start, end
