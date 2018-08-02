@@ -19,9 +19,11 @@ Returns:
     attribute for the configured traffic models. The names are unique across
     Caladrius and can be used in the :code:`model` fields of other requests.
 
-:code:`GET /model/traffic/{dsps-name}/{topology-id}`
+:code:`GET /model/traffic/{dsps-name}`
 
 Parameters:
+    :code: `topology_id`
+        Required - The topology identification string
     :code:`cluster`
         Required - The cluster the topology is running on 
     :code:`environ`

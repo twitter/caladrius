@@ -67,7 +67,7 @@ def create_router(config: Dict[str, Any]) -> Flask:
 
     api.add_resource(
         HeronTraffic,
-        '/model/traffic/heron/<string:topology_id>',
+        '/model/traffic/heron',
         resource_class_kwargs={
             'model_classes': heron_traffic_model_classes,
             'model_config': config["heron.traffic.models.config"],

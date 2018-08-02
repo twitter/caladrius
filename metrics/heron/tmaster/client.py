@@ -348,11 +348,12 @@ class HeronTMasterClient(HeronMetricsClient):
                 LOG.warning("Fetching execute latencies  for component %s "
                             "failed with status code %s", bolt_component,
                             str(http_error.response.status_code))
-
-            if output is None:
-                output = bolt_service_times
             else:
-                output = output.append(bolt_service_times, ignore_index=True)
+                if output is None:
+                    output = bolt_service_times
+                else:
+                    output = output.append(bolt_service_times,
+                                           ignore_index=True)
 
         return output
 

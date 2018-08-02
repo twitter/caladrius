@@ -139,7 +139,8 @@ def last_topo_update_ts(zk_connection: str, zk_root_node: str,
 
     if not zookeeper.exists(node_path):
         msg: str = (f"Node for topology: {topology_id} physical plan does not "
-                    f"exist in Zookeeper at {zk_connection}{zk_root_node}")
+                    f"exist in Zookeeper at "
+                    f"{zk_connection}{zk_root_node}/pplan")
         raise RuntimeError(msg)
 
     _, stats = zookeeper.get(node_path)
