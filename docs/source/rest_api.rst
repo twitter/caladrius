@@ -52,9 +52,11 @@ Returns:
     unique across Caladrius and can be used in the :code:`model` fields of
     other requests.
 
-:code:`POST /model/topology/current/{dsps-name}/{topology-id}`
+:code:`POST /model/topology/{dsps-name}/current`
     
 Parameters:
+    :code: `topology_id`
+        Required - The topology identification string
     :code:`cluster`
         Required - The cluster the topology is running on 
     :code:`environ`

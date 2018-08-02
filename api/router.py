@@ -91,7 +91,7 @@ def create_router(config: Dict[str, Any]) -> Flask:
     # ### CURRENT TOPOLOGY MODELS ###
 
     api.add_resource(
-        HeronCurrent, '/model/topology/heron/current/<string:topology_id>',
+        HeronCurrent, '/model/topology/heron/current',
         resource_class_kwargs={
             'model_classes': heron_topology_model_classes,
             'model_config': config["heron.topology.models.config"],
