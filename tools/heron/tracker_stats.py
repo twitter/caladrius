@@ -49,7 +49,6 @@ def summarise_groupings(tracker_url: str,
     """
     if topologies is None:
         topologies = tracker.get_topologies(tracker_url)
-
     output: pd.DataFrame = None
 
     for (cluster, environ), data in topologies.groupby(["cluster", "environ"]):
@@ -64,6 +63,8 @@ def summarise_groupings(tracker_url: str,
                             environ)
             else:
                 grouping_summary["topology"] = topology
+                grouping_summary["cluster"] = cluster
+                grouping_summary["environ"] = environ
                 grouping_df: pd.DataFrame = pd.DataFrame([grouping_summary])
 
                 if output is None:
@@ -71,8 +72,7 @@ def summarise_groupings(tracker_url: str,
                 else:
                     output = output.append(grouping_df)
 
-    output = output.merge(topologies, on="topology")
-
+    output = output.merge(topologies, on=["topology","environ","cluster"])
     return output
 
 
