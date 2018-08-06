@@ -25,6 +25,7 @@ from caladrius.graph.gremlin.client import GremlinClient
 LOG: logging.Logger = logging.getLogger(__name__)
 
 INSTANCE_MODELS = DefaultDict[str, DefaultDict[int, Dict[str, Prophet]]]
+COMPONENT_MODELS = DefaultDict[str, Dict[str, Prophet]]
 
 
 def get_spout_emissions(metric_client: HeronMetricsClient, tracker_url: str,
@@ -45,18 +46,17 @@ def get_spout_emissions(metric_client: HeronMetricsClient, tracker_url: str,
 
 def build_component_models(
         metric_client: HeronMetricsClient, tracker_url: str, topology_id: str,
-        cluster: str, environ: str, start: dt.datetime, end: dt.datetime,
-        spout_emits: Optional[pd.DataFrame]=None
-        ) -> DefaultDict[str, Dict[str, Prophet]]:
+        cluster: str, environ: str, start: dt.datetime = None, end: dt.datetime = None,
+        spout_emits: Optional[pd.DataFrame]=None) -> DefaultDict[str, Dict[str, Prophet]]:
 
     LOG.info("Creating traffic models for spout components of topology %s",
              topology_id)
 
-    if start and end and not spout_emits:
+    if start and end and spout_emits is None:
         spout_emits = get_spout_emissions(metric_client, tracker_url,
                                           topology_id, cluster, environ, start,
                                           end)
-    elif not start and not end and not spout_emits:
+    elif spout_emits is None and ((not start and end) or (start and not end)):
         err: str = ("Either start and end datetime instances or the spout "
                     "emits should be provided")
         LOG.error(err)
@@ -94,6 +94,10 @@ def predict_per_component(metric_client: HeronMetricsClient, tracker_url: str,
         build_component_models(metric_client, tracker_url, topology_id,
                                cluster, environ, start, end)
 
+    return run_per_component(models, future_mins)
+
+
+def run_per_component(models: COMPONENT_MODELS, future_mins: int) -> pd.DataFrame:
     output: pd.DataFrame = None
 
     for spout_comp, stream_models in models.items():
@@ -312,9 +316,9 @@ class ProphetTrafficModel(HeronTrafficModel):
 
         # Per component predictions
 
-        component_traffic: pd.DataFrame = predict_per_instance(
-            self.metrics_client, self.tracker_url, topology_id, cluster,
-            environ, source_start, source_end, future_mins)
+        component_traffic: pd.DataFrame = predict_per_component(
+            self.metrics_client, self.tracker_url, topology_id,
+            cluster, environ, source_start, source_end, future_mins)
 
         traffic_by_component: pd.core.groupby.DataFrameGroupBy = \
             component_traffic.groupby(["component", "stream"])
