@@ -26,14 +26,109 @@ LOG: logging.Logger = \
     logging.getLogger("caladrius.tests.validation.heron.traffic.prophet")
 
 
-def validate_topology(metrics_client: HeronMetricsClient, tracker_url: str,
-                      topology_id: str, cluster: str, environ: str,
-                      source_hours_list: List[float],
-                      future_mins_list: List[int], metrics_start: dt.datetime,
-                      metrics_end: dt.datetime
-                      ) -> pd.DataFrame:
+def validate_component_level_stats(metrics_client: HeronMetricsClient, tracker_url: str,
+                                  topology_id: str, cluster: str, environ: str,
+                                  source_hours_list: List[float],
+                                  future_mins_list: List[int], metrics_start: dt.datetime,
+                                  metrics_end: dt.datetime
+                                  ) -> pd.DataFrame:
 
-    LOG.info("Validating traffic predictions for topology %s", topology_id)
+    LOG.info("Validating traffic predictions for topology %s for "
+             "component level metrics", topology_id)
+
+    # Fetch emit counts that cover the whole possible validation time period
+    spout_emit_counts: pd.DataFrame = prophet.get_spout_emissions(
+        metrics_client, tracker_url, topology_id, cluster, environ,
+        metrics_start, metrics_end)
+
+    source_end: dt.datetime = (metrics_end -
+                               dt.timedelta(minutes=max(future_mins_list))).replace(tzinfo=None)
+
+    output: List[Dict[str, Union[str, int, float]]] = []
+
+    for source_duration in source_hours_list:
+
+        model_start: dt.datetime = (source_end -
+                                    dt.timedelta(hours=source_duration)).replace(tzinfo=None)
+
+        LOG.info("Predicting future traffic using %f hours of source data from"
+                 " %s to %s", source_duration, model_start, source_end)
+
+        model_emits: pd.DataFrame = \
+            spout_emit_counts[(spout_emit_counts.timestamp >= model_start) &
+                              (spout_emit_counts.timestamp <= source_end)]
+
+        try:
+            # Build component models for each instance using source data of the
+            # current duration
+            component_models: prophet.COMPONENT_MODELS = prophet.build_component_models(
+                metrics_client, tracker_url, topology_id, cluster, environ, spout_emits=model_emits)
+        except Exception as err:
+            LOG.error("Error creating models for topology %s, source duration "
+                      "%f: %s", topology_id, source_duration, str(err))
+            continue
+
+        for future_duration in future_mins_list:
+            # Now use the models created from the current source duration and
+            # predict performance for the current future duration
+            LOG.info("Predicting traffic %d minutes into the future",
+                     future_duration)
+
+            try:
+                # the prediction is the mean input rate per instance in the component
+                prediction: pd.DataFrame = prophet.run_per_component(
+                    component_models, future_duration).rename(
+                        index=str, columns={"ds": "timestamp"})
+            except Exception as err:
+                LOG.error("Error forecasting %d mins ahead for topology %s "
+                          "using source duration %f: %s", future_duration,
+                          topology_id, source_duration, str(err))
+                continue
+
+            validation_end: dt.datetime = \
+                source_end + dt.timedelta(minutes=future_duration)
+
+            actual: pd.DataFrame = spout_emit_counts[
+                (spout_emit_counts.timestamp >= source_end) &
+                (spout_emit_counts.timestamp <= validation_end)]
+
+            combined = actual.merge(prediction, on=["timestamp", "component", "stream"])
+            # To avoid inf values we have to remove all rows where emit count
+            # is zero
+            combined = combined[combined.emit_count > 0]
+
+            combined["residual"] = combined["yhat"] - combined["emit_count"]
+            combined["sq_residual"] = (combined["residual"] *
+                                       combined["residual"])
+
+            combined["error"] = combined["residual"] / combined["emit_count"]
+            combined["sq_error"] = (combined["error"] * combined["error"])
+
+            # We would like to find out the accuracy of the prediction per instance, not just per component
+            for (comp, task, stream), data in \
+                    combined.groupby(["component", "task", "stream"]):
+
+                rms_residual: float = math.sqrt(data["sq_residual"].mean())
+                rms_error: float = math.sqrt(data["sq_error"].mean())
+
+                row: Dict[str, Union[str, int, float]] = {
+                    "component": comp, "task": task, "stream": stream,
+                    "source_hours": source_duration,
+                    "future_mins": future_duration,
+                    "rms_residual": rms_residual,
+                    "rms_error": rms_error}
+                output.append(row)
+    return pd.DataFrame(output)
+
+
+def validate_instance_level_stats(metrics_client: HeronMetricsClient, tracker_url: str,
+                                  topology_id: str, cluster: str, environ: str,
+                                  source_hours_list: List[float],
+                                  future_mins_list: List[int], metrics_start: dt.datetime,
+                                  metrics_end: dt.datetime
+                                  ) -> pd.DataFrame:
+
+    LOG.info("Validating traffic predictions for topology %s for instance level metrics", topology_id)
 
     # Fetch emit counts that cover the whole possible validation time period
     spout_emit_counts: pd.DataFrame = prophet.get_spout_emissions(
@@ -140,7 +235,7 @@ def calc_source_metrics_period(source_hours_list: List[float],
 
 def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
         source_hours_list: List[float], future_mins_list: List[int],
-        output_dir: str, topology_ids: List[str] = None) -> pd.DataFrame:
+        output_dir: str, topology_ids: List[str] = None, comp: bool = False) -> pd.DataFrame:
 
     metrics_start, metrics_end = calc_source_metrics_period(source_hours_list,
                                                             future_mins_list)
@@ -193,12 +288,20 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
                      str(error_source_hours))
         else:
             try:
-                results = validate_topology(metrics_client, tracker_url,
-                                            row.topology, row.cluster,
-                                            row.environ,
-                                            source_hours_list,
-                                            future_mins_list,
-                                            metrics_start, metrics_end)
+                if not comp:
+                    results = validate_instance_level_stats(metrics_client, tracker_url,
+                                                            row.topology, row.cluster,
+                                                            row.environ,
+                                                            source_hours_list,
+                                                            future_mins_list,
+                                                            metrics_start, metrics_end)
+                else:
+                    results = validate_component_level_stats(metrics_client, tracker_url,
+                                                row.topology, row.cluster,
+                                                row.environ,
+                                                source_hours_list,
+                                                future_mins_list,
+                                                metrics_start, metrics_end)
             except Exception as err:
                 LOG.error("Error validating topology %s: %s", row.topology,
                           str(err))
@@ -258,6 +361,10 @@ def _create_parser() -> argparse.ArgumentParser:
                         help=("Optional list of topology names to limit the "
                               "validation to"))
 
+    parser.add_argument("--components", required=False, action="store_true",
+                        help=("Optional flag indicating that a model should be built"
+                              "for component-level statistics"))
+
     return parser
 
 
@@ -297,7 +404,8 @@ if __name__ == "__main__":
     RESULTS: pd.DataFrame = run(CONFIG["heron.traffic.models.config"],
                                 METRICS_CLIENT, ARGS.source_hours,
                                 ARGS.future_mins, ARGS.output_dir,
-                                topology_ids=ARGS.topologies)
+                                topology_ids=ARGS.topologies,
+                                comp=ARGS.components)
     if RESULTS is not None:
         SAVE_PATH: str = os.path.join(ARGS.output_dir,
                                       "all_prophet_errors.csv")
