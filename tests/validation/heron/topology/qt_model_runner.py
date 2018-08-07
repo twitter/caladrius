@@ -110,9 +110,14 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
 
                 # Get the actual arrival rates at all instances
                 actual_arrs: pd.DataFrame = \
-                    metrics_client.get_calculated_arrival_rates(topology_id, cluster,
+                    metrics_client.get_tuple_arrivals_at_stmgr(topology_id, cluster,
                                                                 environ, traffic_start,
                                                                 traffic_end, **kwargs)
+
+                actual_arrs: pd.DataFrame = \
+                    (actual_arrs.groupby(["task", "component", "timestamp"]).sum().reset_index())
+
+                actual_arrs["arrival_rate_tps"] = (actual_arrs["num-tuples"] / 60)
 
                 actual_instance_arrs: pd.DataFrame = \
                     (actual_arrs.groupby(["component", "task"])
@@ -170,7 +175,7 @@ def _create_parser() -> argparse.ArgumentParser:
                               "information should be displayed"))
     parser.add_argument("-od", "--output_dir", required=False,
                         help=("Optional output directory to save results "
-                              "DataFrames too."))
+                              "DataFrames."))
 
     parser.add_argument("-t", "--topology", required=True)
     parser.add_argument("-c", "--cluster", required=True)

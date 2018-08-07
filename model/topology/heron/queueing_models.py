@@ -11,7 +11,7 @@ import pandas as pd
 from caladrius.metrics.client import MetricsClient
 from caladrius.model.topology.heron.abs_queueing_models import QueueingModels
 from caladrius.model.topology.heron.helpers import *
-from traffic_provider.trafficprovider import TrafficProvider
+from caladrius.traffic_provider.trafficprovider import TrafficProvider
 
 LOG: logging.Logger = logging.getLogger(__name__)
 

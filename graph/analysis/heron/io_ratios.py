@@ -97,9 +97,15 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
     emit_counts: pd.DataFrame = metrics_client.get_emit_counts(
         topology_id, cluster, environ, start, end, **kwargs)
 
+    arrived_tuples: pd.DataFrame = metrics_client.get_tuple_arrivals_at_stmgr(
+        topology_id, cluster, environ, start, end, **kwargs)
+
     execute_counts: pd.DataFrame = metrics_client.get_execute_counts(
         topology_id, cluster, environ, start, end, **kwargs)
 
+    arrived_tuples = arrived_tuples.merge(execute_counts, on=["task", "component", "container", "timestamp"])
+
+    arrived_tuples.drop("execute_count", axis=1, inplace=True)
     # Limit the count DataFrames to only those component with both incoming and
     # outgoing streams
     in_out_comps: List[str] = get_in_out_components(graph_client, topology_id)
@@ -108,11 +114,10 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
     emit_counts.rename(index=str, columns={"stream": "outgoing_stream"},
                        inplace=True)
 
-    execute_counts = execute_counts[execute_counts["component"]
+    arrived_tuples = arrived_tuples[arrived_tuples["component"]
                                     .isin(in_out_comps)]
-    execute_counts.rename(index=str, columns={"stream": "incoming_stream"},
+    arrived_tuples.rename(index=str, columns={"stream": "incoming_stream"},
                           inplace=True)
-
     # Re-sample the counts into equal length time buckets and group by task id,
     # time bucket and stream. This aligns the two DataFrames with timestamps of
     # equal length and start point so they can be merged later
@@ -124,12 +129,12 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
          ["emit_count"]
          .sum().reset_index())
 
-    execute_counts_ts: pd.DataFrame = \
-        (execute_counts.set_index(["task", "timestamp"])
+    arrived_tuples_ts: pd.DataFrame = \
+        (arrived_tuples.set_index(["task", "timestamp"])
          .groupby([pd.Grouper(level="task"),
                    pd.Grouper(freq=f"{bucket_length}S", level='timestamp'),
                    "component", "incoming_stream", "source_component"])
-         ["execute_count"]
+         ["num-tuples"]
          .sum().reset_index())
 
     rows: List[Dict[str, Union[str, float]]] = []
@@ -139,11 +144,11 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
     # row per time bucket) as the input total for each input stream
     component: str
     in_data: pd.DataFrame
-    for component, in_data in execute_counts_ts.groupby(["component"]):
+    for component, in_data in arrived_tuples_ts.groupby(["component"]):
         in_stream_counts: pd.DataFrame = \
             (in_data.set_index(["task", "timestamp", "incoming_stream",
                                 "source_component"])
-             .execute_count.unstack(level=["incoming_stream",
+             ["num-tuples"].unstack(level=["incoming_stream",
                                            "source_component"])
              .reset_index())
 
@@ -188,7 +193,6 @@ def lstsq_io_ratios(metrics_client: HeronMetricsClient,
             in_stream: str
             source: str
             for i, (in_stream, source) in enumerate(cols):
-
                 row: Dict[str, Union[str, float]] = {
                     "task": task,
                     "output_stream": out_stream,
