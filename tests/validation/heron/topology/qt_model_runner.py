@@ -84,75 +84,64 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
 
     output: pd.DataFrame = None
 
-    for i, (source_start, source_end) in enumerate(periods):
-        LOG.info("\n\n\nComparing period %d of %d\n\n", i+1, len(periods))
+    for j, (traffic_start, traffic_end) in enumerate(periods):
+
         LOG.info("Using metrics sourced from %s to %s",
-                 source_start.isoformat(), source_end.isoformat())
+                 traffic_start.isoformat(), traffic_end.isoformat())
 
-        for j, (traffic_start, traffic_end) in enumerate(periods):
+        LOG.info("\n\nComparing prediction, using metrics from period "
+                 "%d and traffic from period %d, to actual performance"
+                 " during period %d\n", j, j, j)
+        try:
 
-            if (traffic_start, traffic_end) == (source_start, source_end):
-                continue
+            spout_state = heron_helper.get_spout_state(
+                metrics_client, topology_id, cluster, environ,
+                config["heron.tracker.url"], traffic_start, traffic_end,
+                60, "mean")
+
+            # Get the actual arrival rates at all instances
+            actual_arrs: pd.DataFrame = \
+                metrics_client.get_tuple_arrivals_at_stmgr(topology_id, cluster,
+                                                            environ, traffic_start,
+                                                            traffic_end, **kwargs)
+
+            actual_arrs: pd.DataFrame = \
+                (actual_arrs.groupby(["task", "component", "timestamp"]).sum().reset_index())
+
+            actual_arrs["arrival_rate_tps"] = (actual_arrs["num-tuples"] / 60)
+
+            actual_instanceå_arrs: pd.DataFrame = \
+                (actual_arrs.groupby(["component", "task"])
+                 ["arrival_rate_tps"].mean().reset_index()
+                 .rename(index=str, columns={"arrival_rate_tps":
+                                             "actual_arrival_rates_tps"}))
+
+            results: pd.DataFrame = compare(
+                metrics_client, spout_state, actual_instance_arrs,
+                topology_model, topology_id,
+                cluster, environ, traffic_start, traffic_end,
+                metric_bucket_length, **kwargs)
+
+        except ConnectionRefusedError as cr_err:
+            LOG.error("Connection was refused with message: %s",
+                      str(cr_err))
+        except ConnectionResetError as cre_err:
+            LOG.error("Connection was reset with message: %s",
+                      str(cre_err))
+        except requests.exceptions.ConnectionError as req_err:
+            LOG.error("Connection error with message: %s", str(req_err))
+        except Exception as err:
+            LOG.error("Error (%s) with message: %s", str(type(err)),
+                      str(err))
+            raise err
+        else:
+            results["traffic_start"] = traffic_start
+            results["traffic_end"] = traffic_end
+
+            if output is not None:
+                output = output.append(results, ignore_index=True)
             else:
-                LOG.info("\n\nComparing prediction, using metrics from period "
-                         "%d and traffic from period %d, to actual performance"
-                         " during period %d\n", i, j, j)
-
-                LOG.info("Using traffic data from period between %s and %s",
-                         traffic_start, traffic_end)
-
-            try:
-
-                spout_state = heron_helper.get_spout_state(
-                    metrics_client, topology_id, cluster, environ,
-                    config["heron.tracker.url"], traffic_start, traffic_end,
-                    60, "mean")
-
-                # Get the actual arrival rates at all instances
-                actual_arrs: pd.DataFrame = \
-                    metrics_client.get_tuple_arrivals_at_stmgr(topology_id, cluster,
-                                                                environ, traffic_start,
-                                                                traffic_end, **kwargs)
-
-                actual_arrs: pd.DataFrame = \
-                    (actual_arrs.groupby(["task", "component", "timestamp"]).sum().reset_index())
-
-                actual_arrs["arrival_rate_tps"] = (actual_arrs["num-tuples"] / 60)
-
-                actual_instance_arrs: pd.DataFrame = \
-                    (actual_arrs.groupby(["component", "task"])
-                     ["arrival_rate_tps"].mean().reset_index()
-                     .rename(index=str, columns={"arrival_rate_tps":
-                                                 "actual_arrival_rates_tps"}))
-
-                results: pd.DataFrame = compare(
-                    metrics_client, spout_state, actual_instance_arrs,
-                    topology_model, topology_id,
-                    cluster, environ, source_start, source_end,
-                    metric_bucket_length, **kwargs)
-
-            except ConnectionRefusedError as cr_err:
-                LOG.error("Connection was refused with message: %s",
-                          str(cr_err))
-            except ConnectionResetError as cre_err:
-                LOG.error("Connection was reset with message: %s",
-                          str(cre_err))
-            except requests.exceptions.ConnectionError as req_err:
-                LOG.error("Connection error with message: %s", str(req_err))
-            except Exception as err:
-                LOG.error("Error (%s) with message: %s", str(type(err)),
-                          str(err))
-                raise err
-            else:
-                results["source_start"] = source_start
-                results["source_end"] = source_end
-                results["traffic_start"] = traffic_start
-                results["traffic_end"] = traffic_end
-
-                if output is not None:
-                    output = output.append(results, ignore_index=True)
-                else:
-                    output = results
+                output = results
 
     return output
 
@@ -173,9 +162,8 @@ def _create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--debug", required=False, action="store_true",
                         help=("Optional flag indicating if debug level "
                               "information should be displayed"))
-    parser.add_argument("-od", "--output_dir", required=False,
-                        help=("Optional output directory to save results "
-                              "DataFrames."))
+    parser.add_argument("-od", "--output_dir", required=True,
+                        help=("Output directory to save results DataFrames."))
 
     parser.add_argument("-t", "--topology", required=True)
     parser.add_argument("-c", "--cluster", required=True)
