@@ -207,38 +207,49 @@ class HeronInfluxDBClient(HeronMetricsClient):
                                sample period.
         """
 
-        LOG.info("Fetching service times for topology: %s on cluster: %s in "
-                 "environment: %s for a %s second time period between %s and "
-                 "%s", topology_id, cluster, environ,
-                 (end-start).total_seconds(), start.isoformat(),
-                 end.isoformat())
-
         start_time: str = convert_datetime_to_rfc3339(start)
         end_time: str = convert_datetime_to_rfc3339(end)
 
         database: str = create_db_name(self.database_prefix, topology_id,
                                        cluster, environ)
 
+        LOG.info("Fetching service times for topology: %s on cluster: %s in "
+                 "environment: %s for a %s second time period between %s and "
+                 "%s", topology_id, cluster, environ,
+                 (end-start).total_seconds(), start_time, end_time)
+
         self.client.switch_database(database)
+
+        metric: str = "execute-latency"
 
         # Check to see if we have already queried Influx for the metric
         # measurement names, if not query them and cache the results.
-        if database not in self.metric_name_cache["execute-latency"]:
+        if database not in self.metric_name_cache[metric]:
+            LOG.debug("Finding measurement names for metric %s from "
+                      "database: %s", metric, database)
             # Find all the measurements for each bolt component
             measurement_query: str = ("SHOW MEASUREMENTS WITH MEASUREMENT =~ "
-                                      "/execute\-latency\/+w\/*/")
+                                      "/execute\-latency\/+.*\/+.*/")
 
             measurement_names: List[str] = \
                 [point["name"] for point in
                  self.client.query(measurement_query).get_points()]
 
-            self.metric_name_cache["execute-latency"][database] = \
+            if not measurement_names:
+                LOG.warning("No measurements found in database: %s for metric "
+                            "%s", database, metric)
+            else:
+                LOG.debug("Found %d measurement names for %s metric",
+                          len(measurement_names), metric)
+
+            self.metric_name_cache[metric][database] = \
                 measurement_names
+        else:
+            LOG.debug("Using cached measurement names for %s metric", metric)
 
         output: List[Dict[str, Union[str, int, dt.datetime]]] = []
 
-        for measurement_name in self.metric_name_cache[
-                "execute_latency"][database]:
+        for measurement_name in self.metric_name_cache[metric][database]:
 
             _, source_component, stream = measurement_name.split("/")
 
@@ -247,8 +258,8 @@ class HeronInfluxDBClient(HeronMetricsClient):
                               f"WHERE time >= '{start_time}' "
                               f"AND time <= '{end_time}'")
 
-            LOG.debug("Querying execute latency measurements with influx QL "
-                      "statement: %s", query_str)
+            LOG.debug("Querying %s measurements with influx QL statement: %s",
+                      metric, query_str)
 
             results: ResultSet = self.client.query(query_str)
 
