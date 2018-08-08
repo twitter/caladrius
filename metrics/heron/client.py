@@ -121,3 +121,9 @@ class HeronMetricsClient(MetricsClient):
 
         pass
 
+    @abstractmethod
+    def get_end_to_end_latency(self, topology_id: str, cluster: str, environ: str, sink: str,
+                               start: [dt.datetime] = None, end: [dt.datetime] = None,
+                               **kwargs: Union[str, int, float]) -> DataFrame:
+        """This function is used to obtain end to end latency if the topology reports it"""
+        pass

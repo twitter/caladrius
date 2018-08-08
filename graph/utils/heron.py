@@ -138,7 +138,8 @@ def get_all_paths(graph_client: GremlinClient, topology_id: str) -> List[List[st
                 if len(downstream_task_vertices) != 0:
                     parent_to_child[vertex_task_id] = downstream_task_ids
 
-    if len(spout_tasks) > 10:
+    if len(spout_tasks) > 10 or len(spout_tasks) == 1:
+        # create only one process if there is only one spout tasks or if there are more than 10
         # do not do multi-processing as creating more than 10 processes might use up too much memory
         paths: List = path_helper(parent_to_child, spout_tasks)
     else:
@@ -280,9 +281,9 @@ def paths_check(graph_client: GremlinClient, zk_config: Dict[str, any],
     zookeeper_url = ".".join(parts)
 
     LOG.info(zookeeper_url)
-    recent_topo_update_ts: dt.datetime = zookeeper.last_topo_update_ts(zookeeper_url,
-                                                                       zk_config["heron.statemgr.root.path"],
-                                                                       topology_id, zk_config["zk.time.offset"])
+    recent_topo_update_ts: dt.datetime =  zookeeper.last_topo_update_ts(zookeeper_url,
+                                                                        zk_config["heron.statemgr.root.path"],
+                                                                        topology_id, zk_config["zk.time.offset"])
 
     # test to see if a file exists with the right name
     file_name = file_path_template.substitute(topology=topology_id,

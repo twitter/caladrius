@@ -17,7 +17,7 @@ import requests
 LOG: logging.Logger = logging.getLogger(__name__)
 
 TOPO_UPDATED_SEARCH_STR: str = \
-    r"ctime<\/td><td>(?P<date>\w+.? \d+, \d+ \d+[:\d+]* \w.\w.)\s\([\w|\d|\s|\,]*ago\)"
+    r"ctime<\/td><td>(?P<date>\w+.? \d+, \d+ (midnight|\d+[:\d+]* \w.\w.))\s\([\w|\d|\s|\,]*ago\)"
 
 DATE_FORMAT: str = "%B %d, %Y %I:%M %p"
 OLD_DATE_FORMAT: str = "%b %d, %Y %I:%M %p"
@@ -79,7 +79,13 @@ def last_topo_update_ts(zk_connection: str, zk_root_node: str,
         try:
             last_updated = dt.datetime.strptime(time_str, OLD_DATE_FORMAT)
         except ValueError:
-            last_updated = dt.datetime.strptime(time_str, NO_MINS_DATE_FORMAT)
+            try:
+                last_updated = dt.datetime.strptime(time_str, NO_MINS_DATE_FORMAT)
+            except ValueError:
+                if "midnight" in time_str:
+                    time_str = time_str.replace("midnight","12:00 am")
+                last_updated = dt.datetime.strptime(time_str, OLD_DATE_FORMAT)
+
 
     zk_tz: dt.timezone = dt.timezone(dt.timedelta(hours=zk_time_offset))
 
