@@ -6,6 +6,7 @@ Subpackages
 
 .. toctree::
 
+    caladrius.metrics.heron.influxdb
     caladrius.metrics.heron.tmaster
     caladrius.metrics.heron.topology
 
