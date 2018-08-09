@@ -246,7 +246,7 @@ class ProphetTrafficModel(HeronTrafficModel):
                 config["prophet.model.default.future.mins"]
 
         else:
-            self.default_future_minuets = 30
+            self.default_future_mins = 30
             LOG.warning("Default future minutes parameter was not supplied "
                         "via configuration file. Setting to %d minutes.",
                         self.default_future_mins)

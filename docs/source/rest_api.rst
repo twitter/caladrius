@@ -22,7 +22,7 @@ Returns:
 :code:`GET /model/traffic/{dsps-name}`
 
 Parameters:
-    :code: `topology_id`
+    :code:`topology_id`
         Required - The topology identification string
     :code:`cluster`
         Required - The cluster the topology is running on 
@@ -55,7 +55,7 @@ Returns:
 :code:`POST /model/topology/{dsps-name}/current`
     
 Parameters:
-    :code: `topology_id`
+    :code:`topology_id`
         Required - The topology identification string
     :code:`cluster`
         Required - The cluster the topology is running on 
