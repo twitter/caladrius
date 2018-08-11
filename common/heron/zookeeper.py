@@ -24,6 +24,7 @@ TOPO_UPDATED_SEARCH_STR: str = \
 DATE_FORMAT: str = "%B %d, %Y %I:%M %p"
 OLD_DATE_FORMAT: str = "%b %d, %Y %I:%M %p"
 NO_MINS_DATE_FORMAT: str = "%B %d, %Y %I %p"
+NO_MINS_DATE_FORMAT_2: str = "%b %d, %Y %I %p"
 
 
 def last_topo_update_ts_html(zk_connection: str, zk_root_node: str,
@@ -85,11 +86,14 @@ def last_topo_update_ts_html(zk_connection: str, zk_root_node: str,
             last_updated = dt.datetime.strptime(time_str, OLD_DATE_FORMAT)
         except ValueError:
             try:
-                last_updated = dt.datetime.strptime(time_str, NO_MINS_DATE_FORMAT)
+                last_updated = dt.datetime.strptime(time_str, NO_MINS_DATE_FORMAT_2)
             except ValueError:
-                if "midnight" in time_str:
-                    time_str = time_str.replace("midnight","12:00 am")
-                last_updated = dt.datetime.strptime(time_str, OLD_DATE_FORMAT)
+                try:
+                    last_updated = dt.datetime.strptime(time_str, NO_MINS_DATE_FORMAT)
+                except ValueError:
+                    if "midnight" in time_str:
+                        time_str = time_str.replace("midnight","12:00 am")
+                    last_updated = dt.datetime.strptime(time_str, OLD_DATE_FORMAT)
 
 
     zk_tz: dt.timezone = dt.timezone(dt.timedelta(hours=zk_time_offset))
