@@ -134,7 +134,8 @@ class StatsSummaryTrafficModel(HeronTrafficModel):
             # argument? For TMaster it is always 1 min and for others this can
             # be supplied in the kwargs passed to the metrics get method so it
             # will be available.
-            time_period_sec = calculate_ts_period(spout_emit_counts.timestamp)
+            time_period_sec: float = \
+                    calculate_ts_period(spout_emit_counts.timestamp)
             LOG.info("Emit count data was calculated to have a period of %f "
                      "seconds", time_period_sec)
 
@@ -151,6 +152,8 @@ class StatsSummaryTrafficModel(HeronTrafficModel):
 
         for (comp, stream), comp_data in \
                 spout_emit_counts.groupby(["component", "stream"]):
+
+            LOG.debug("Processing component: %s stream: %s", comp, stream)
 
             components["mean"][comp][stream] = \
                 (float(comp_data.emit_count.mean()) / time_period_sec)
@@ -176,6 +179,9 @@ class StatsSummaryTrafficModel(HeronTrafficModel):
 
         for (task_id, stream), task_data in \
                 spout_emit_counts.groupby(["task", "stream"]):
+
+            LOG.debug("Processing instance: %d stream: %s", task_id, stream)
+
             instances["mean"][str(task_id)][stream] = \
                 (float(task_data.emit_count.mean()) / time_period_sec)
 
