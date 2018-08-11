@@ -51,45 +51,6 @@ def find_all_paths(parent_to_child, start, path=[], path_dict=defaultdict()):
     return paths, path_dict
 
 
-def find_all_paths_helper(parent_to_child, source, q: Queue):
-    paths, _ = find_all_paths(parent_to_child, source)
-    # we ignore the returned path dictionary as we don't have use for it
-
-    if (type(paths[0])) == int:
-        # this will only happen with topologies with a single node and is therefore unlikely
-        q.put(paths, block=True)
-    else: # this is the more likely case, where each path is a list
-        for path in paths:
-            q.put(path, block=True)
-    q.put("Processing Complete")
-
-
-def multi_proc_path_helper(parent_to_child: dict, spouts: List) -> List:
-    """This is a helper function that creates a separate process for every spout
-    and uses that process to calculate all paths to sinks for that spout. This function is
-    expected to be compute intensive and so, multi-processing is required."""
-    paths: List = []
-    q = Queue()
-    processes = []
-    for spout in spouts:
-            p = Process(target=find_all_paths_helper, args=(parent_to_child, spout, q))
-            p.start()
-            processes.append(p)
-
-    LOG.info("Number of processes created: %d", len(processes))
-    counter = 0
-    while not q.empty() and counter < len(processes):
-        item = q.get(block=True)
-        if type(item) == str:
-            counter = counter + 1
-        else:
-            paths.append(item)
-
-    for process in processes:
-        process.join()
-    return paths
-
-
 def path_helper(parent_to_child: dict, spouts: List) -> List:
     """This is a helper function that creates a separate process for every spout
     and uses that process to calculate all paths to sinks for that spout. This function is
@@ -138,13 +99,7 @@ def get_all_paths(graph_client: GremlinClient, topology_id: str) -> List[List[st
                 if len(downstream_task_vertices) != 0:
                     parent_to_child[vertex_task_id] = downstream_task_ids
 
-    if len(spout_tasks) > 10 or len(spout_tasks) == 1:
-        # create only one process if there is only one spout tasks or if there are more than 10
-        # do not do multi-processing as creating more than 10 processes might use up too much memory
-        paths: List = path_helper(parent_to_child, spout_tasks)
-    else:
-        # Fewer than 10 processes should be okay
-        paths: List = multi_proc_path_helper(parent_to_child, spout_tasks)
+    paths: List = path_helper(parent_to_child, spout_tasks)
 
     LOG.info("Number of paths returned: %d", len(paths))
     end: dt.datetime = dt.datetime.now()

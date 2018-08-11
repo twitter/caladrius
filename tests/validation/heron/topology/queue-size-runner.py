@@ -117,6 +117,7 @@ if __name__ == "__main__":
 
     for sink in sinks:
         result = metrics_client.get_end_to_end_latency(topology, cluster, environ, sink, start, end)
+        result["average_latency"] = result["end_to_end_latency"] / result["tuple_count"]
         if actual_latencies.empty:
             actual_latencies = result
         else:
