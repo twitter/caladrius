@@ -137,6 +137,7 @@ class HeronCurrent(Resource):
         model_kwargs.pop("topology_id")
         cluster = request.args.get("cluster")
         environ = request.args.get("environ")
+        topology_id = request.args.get("topology_id")
 
         output = {}
         for model_name in models:
@@ -371,5 +372,4 @@ class HeronProposed(Resource):
                                                        **model_kwargs)
 
         return results
-
 
