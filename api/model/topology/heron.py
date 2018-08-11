@@ -64,12 +64,16 @@ class HeronCurrent(Resource):
 
         super().__init__()
 
-    def post(self, topology_id: str) -> Tuple[Dict[str, Any], int]:
+    def post(self) -> Tuple[Dict[str, Any], int]:
         """ Method handling POST requests to the current topology performance
         modelling endpoint."""
 
         # Make sure we have the args we need
         errors: List[Dict[str, str]] = []
+        if "topology_id" not in request.args:
+            errors.append({"type": "MissingParameter",
+                           "error": ("'topology_id' parameter should be "
+                                     "supplied")})
         if "cluster" not in request.args:
             errors.append({"type": "MissingParameter",
                            "error": "'cluster' parameter should be supplied"})
@@ -89,23 +93,30 @@ class HeronCurrent(Resource):
             return {"errors": errors}, 400
 
         LOG.info("Processing performance modelling request for topology: %s, "
-                 "cluster: %s, environment: %s, using model: %s", topology_id,
-                 request.args.get("cluster"), request.args.get("environ"),
+                 "cluster: %s, environment: %s, using model: %s",
+                 request.args.get("topology_id"), request.args.get("cluster"),
+                 request.args.get("environ"),
                  str(request.args.getlist("model")))
 
         # Make sure we have a current graph representing the physical plan for
         # the topology
-        graph_check(self.graph_client, self.model_config, self.tracker_url,
-                    request.args.get("cluster"), request.args.get("environ"),
-                    topology_id)
+        try:
+            graph_check(self.graph_client, self.model_config, self.tracker_url,
+                        request.args["cluster"], request.args["environ"],
+                        request.args["topology_id"])
+        except Exception as err:
+            LOG.error("Error running graph check for topology: %s -> %s",
+                      request.args["topology_id"], str(err))
+            errors.append({"topology": request.args["topology_id"],
+                           "type": str(type(err)),
+                           "error": str(err)})
+            return {"errors": errors}, 400
 
         # Get the spout traffic state and convert the json string task ID to
         # integers
         json_traffic: Dict[str, Dict[str, float]] = request.get_json()
         traffic: Dict[int, Dict[str, float]] = \
             {int(key): value for key, value in json_traffic.items()}
-
-        print(traffic)
 
         if "all" in request.args.getlist("model"):
             LOG.info("Running all configured Heron topology performance "
@@ -118,12 +129,12 @@ class HeronCurrent(Resource):
         model_kwargs: Dict[str, Any] = \
             utils.convert_wimd_to_dict(request.args)
 
-        # Remove the models list from the kwargs as it is only needed by this
-        # method
+        # Remove the models list + other keys from the kwargs as it is only
+        # needed by this method
         model_kwargs.pop("model")
         model_kwargs.pop("cluster")
         model_kwargs.pop("environ")
-
+        model_kwargs.pop("topology_id")
         cluster = request.args.get("cluster")
         environ = request.args.get("environ")
 

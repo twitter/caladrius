@@ -348,11 +348,12 @@ class HeronTMasterClient(HeronMetricsClient):
                 LOG.warning("Fetching execute latencies  for component %s "
                             "failed with status code %s", bolt_component,
                             str(http_error.response.status_code))
-
-            if output is None:
-                output = bolt_service_times
             else:
-                output = output.append(bolt_service_times, ignore_index=True)
+                if output is None:
+                    output = bolt_service_times
+                else:
+                    output = output.append(bolt_service_times,
+                                           ignore_index=True)
 
         return output
 
@@ -685,7 +686,7 @@ class HeronTMasterClient(HeronMetricsClient):
             * container:  The ID for the container this metric comes from,
             * stream: The name of the incoming stream from which the tuples
               that lead to this metric came from,
-            * latency-ms: The average execute latency measurement in
+            * latency_ms: The average execute latency measurement in
               milliseconds for that metric time period.
         """
 
@@ -737,13 +738,13 @@ class HeronTMasterClient(HeronMetricsClient):
 
         Arguments:
             topology_id (str):    The topology identification string.
+            cluster (str):  The cluster the topology is running in.
+            environ (str):  The environment the topology is running in (eg.
+                            prod, devel, test, etc).
             start (datetime):    utc datetime instance for the start of the
                                     metrics gathering period.
             end (datetime):  utc datetime instance for the end of the
                                 metrics gathering period.
-            **cluster (str):  The cluster the topology is running in.
-            **environ (str):  The environment the topology is running in (eg.
-                              prod, devel, test, etc).
 
         Returns:
             pandas.DataFrame: A DataFrame containing the service time
@@ -761,8 +762,6 @@ class HeronTMasterClient(HeronMetricsClient):
               milliseconds for that metric time period.
 
         Raises:
-            KeyError:   If the any of the required keyword arguments are
-                        missing.
             RuntimeWarning: If the specified topology has a reliability mode
                             that does not enable complete latency.
         """

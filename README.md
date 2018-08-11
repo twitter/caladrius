@@ -50,13 +50,13 @@ Server](http://tinkerpop.apache.org/docs/current/reference/#gremlin-server)
 instance running [TinkerPop](http://tinkerpop.apache.org/) 3.3.2 or higher. 
 
 The reference gremlin sever can be downloaded from 
-[here](https://www.apache.org/dyn/closer.lua/tinkerpop/3.3.2/apache-tinkerpop-gremlin-server-3.3.2-bin.zip).
+[here](https://www.apache.org/dyn/closer.lua/tinkerpop/3.3.3/apache-tinkerpop-gremlin-server-3.3.3-bin.zip).
 
 The Gremlin server should have the [Gremlin
 Python](http://tinkerpop.apache.org/docs/current/reference/#gremlin-python)
 plugin installed:
 
-    $ gremlin-server.sh install org.apache.tinkerpop gremlin-python 3.3.2
+    $ gremlin-server.sh install org.apache.tinkerpop gremlin-python 3.3.3
 
 Start the server with the gremlin python config (included in the standard
 server distribution):
