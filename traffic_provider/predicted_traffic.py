@@ -79,3 +79,16 @@ class PredictedTraffic(TrafficProvider):
             self.inter_arrival_time = convert_throughput_to_inter_arr_times(self.tuple_arrival)
 
         return self.inter_arrival_time
+
+    def service_times(self):
+        """TODO: Also predict service times for all components!"""
+        bolt_service_times = self.metrics_client.get_service_times(self.topology, self.cluster,
+                                                                   self.environ, self.start, self.end, **self.kwargs)
+        # Drop the system streams
+        bolt_service_times = (bolt_service_times[~bolt_service_times["stream"].str.contains("__")])
+        if bolt_service_times.empty:
+            raise Exception("Service times for the topology's bolts are unavailable")
+
+        bolt_service_times.drop(["source_component", "stream"], axis=1, inplace=True)
+
+        return bolt_service_times

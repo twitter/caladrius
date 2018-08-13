@@ -12,6 +12,7 @@ from caladrius.metrics.client import MetricsClient
 from caladrius.model.topology.heron.abs_queueing_models import QueueingModels
 from caladrius.model.topology.heron.helpers import *
 from caladrius.traffic_provider.trafficprovider import TrafficProvider
+from caladrius.graph.gremlin.client import GremlinClient
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class MMCQueue(QueueingModels):
     distribution. An extension of this model is one with multiple servers (denoted by variable 'c')
     and is called an M/M/c queue.
     """
-    def __init__(self, metrics_client: MetricsClient, paths, topology_id: str,
+    def __init__(self, graph_client: GremlinClient, metrics_client: MetricsClient, paths, topology_id: str,
                  cluster: str, environ: str, start: dt.datetime, end: dt.datetime, other_kwargs: dict):
         """
         This function initializes relevant variables to calculate queue related metrics
@@ -83,7 +84,6 @@ class MMCQueue(QueueingModels):
         queue_size: pd.DataFrame = self.average_queue_size()
         merged = merged.merge(queue_size, on=["task"])[["utilization", "task", "mean_waiting_time", "queue-size", "mean_arrival_rate_x"]]
         merged = merged.rename(columns={'mean_arrival_rate_x': 'mean_arrival_rate'})
-        LOG.info(merged)
         return find_end_to_end_latencies(self.paths, merged, self.service_times)
 
 
@@ -95,7 +95,7 @@ class GGCQueue(QueueingModels):
     more realistic scenarios as arrival rates and processing rates do not necessarily fit probabilistic
     distributions (such as the Poisson distribution, used to describe arrival rates in M/M/1 queues).
     """
-    def __init__(self, metrics_client: MetricsClient, paths: List, topology_id: str,
+    def __init__(self, graph_client: GremlinClient, metrics_client: MetricsClient, paths: List, topology_id: str,
                  cluster: str, environ: str, start: dt.datetime, end: dt.datetime,
                  traffic_provider: TrafficProvider, other_kwargs: dict):
         """
@@ -108,30 +108,13 @@ class GGCQueue(QueueingModels):
         http://home.iitk.ac.in/~skb/qbook/Slide_Set_12.PDF and
         http://www.math.nsc.ru/LBRT/v1/foss/gg1_2803.pdf
         """
-        super().__init__(metrics_client, paths, topology_id, cluster, environ, start, end, other_kwargs)
+        super().__init__(graph_client, metrics_client, paths, topology_id, cluster, environ, start, end, other_kwargs)
 
         # ensure that paths are populated
         if len(self.paths) == 0:
             raise Exception("Topology paths are unavailable")
 
-        # Remove the start and end time kwargs so we don't supply them twice to
-        # the metrics client.
-
-        # Get the service time for all elements
-        service_times: pd.DataFrame = self.metrics_client.get_service_times(
-            topology_id, cluster, environ, start, end, **other_kwargs)
-
-        # Get execute counts for all elements for validation
-        execute_counts: pd.DataFrame = self.metrics_client.get_execute_counts(
-            topology_id, cluster, environ, start, end, **other_kwargs)
-
-        # Drop the system streams
-        self.service_times = (service_times[~service_times["stream"].str.contains("__")])
-        if self.service_times.empty:
-            raise Exception("Service times for the topology are unavailable")
-
-        # Get number of arrivals at stream managers
-        self.execute_counts: pd.DataFrame = execute_counts
+        self.service_times = traffic_provider.service_times()
         self.service_stats: pd.DataFrame = process_execute_latencies(self.service_times)
         self.arrival_rate = traffic_provider.arrival_rates()
         self.inter_arrival_time_stats: pd.DataFrame = traffic_provider.inter_arrival_times()
@@ -140,6 +123,7 @@ class GGCQueue(QueueingModels):
 
     @lru_cache()
     def average_waiting_time(self) -> pd.DataFrame:
+        # kingman's formula
         merged: pd.DataFrame = self.service_stats.merge(self.inter_arrival_time_stats, on=["task"])
 
         merged["utilization"] = merged["mean_service_time"] / merged["mean_inter_arrival_time"]

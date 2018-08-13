@@ -97,7 +97,7 @@ class QTTopologyModel(HeronTopologyModel):
 
         paths = read_paths(other_kwargs, topology_id, cluster, environ)
 
-        queue: QueueingModels = GGCQueue(self.metrics_client, paths,
+        queue: QueueingModels = GGCQueue(self.graph_client, self.metrics_client, paths,
                                          topology_id, cluster, environ, start, end, traffic_source, other_kwargs)
         return queue.end_to_end_latencies()
 
@@ -182,8 +182,8 @@ class QTTopologyModel(HeronTopologyModel):
                                         if key not in ["start", "end"]}
 
         paths = read_paths(other_kwargs, topology_id, cluster, environ)
-        # TODO -- pass in a metrics source to the queue that can also give future times
-        queue: QueueingModels = GGCQueue(self.metrics_client, paths,
+
+        queue: QueueingModels = GGCQueue(self.graph_client, self.metrics_client, paths,
                                          topology_id, cluster, environ,
                                          start, end, traffic_provider, other_kwargs)
         p: Predictor = SimplePredictor(topology_id, cluster, environ, start,

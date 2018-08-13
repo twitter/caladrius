@@ -137,6 +137,7 @@ class SimplePredictor(Predictor):
         for index, row in new_plan.iterrows():
             task_arrivals = arrival_rate.loc[arrival_rate["task"].isin(row["tasks"])]
             if not task_arrivals.empty:
+                # TODO check correctness
                 total_arrivals = task_arrivals[["mean_arrival_rate"]].sum()
                 total_serviced = expected_service_rate.loc[expected_service_rate["task"].isin(row["tasks"])]["mean_service_rate"].sum()
 

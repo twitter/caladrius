@@ -225,8 +225,8 @@ class HeronCurrent(Resource):
         model_kwargs["heron.statemgr.connection.string"] = self.model_config["heron.statemgr.connection.string"]
 
         start, end = get_start_end_times(**model_kwargs)
-        traffic_provider: CurrentTraffic = CurrentTraffic(self.metrics_client, topology_id, cluster, environ,
-                                                          start, end, **model_kwargs)
+        traffic_provider: CurrentTraffic = CurrentTraffic(self.metrics_client, self.graph_client, topology_id,
+                                                          cluster, environ, start, end, {}, **model_kwargs)
         output = {}
         for model_name in models:
             LOG.info("Running topology performance model %s", model_name)
