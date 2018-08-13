@@ -173,7 +173,7 @@ def _physical_plan_still_current(topology_id: str,
              "topology: %s is still current", topology_id)
 
     recent_topo_update_ts: dt.datetime = \
-        zookeeper.last_topo_update_ts(zk_connection, zk_root_node, topology_id,
+        zookeeper.last_topo_update_ts_html(zk_connection, zk_root_node, topology_id,
                                       zk_time_offset)
 
     if most_recent_graph_ts > recent_topo_update_ts:
@@ -207,7 +207,7 @@ def read_paths(zk_config: Dict[str, any], topology_id: str, cluster: str, enviro
     parts[1] = cluster
     zookeeper_url = ".".join(parts)
 
-    recent_topo_update_ts: dt.datetime = zookeeper.last_topo_update_ts(zookeeper_url,
+    recent_topo_update_ts: dt.datetime = zookeeper.last_topo_update_ts_html(zookeeper_url,
                                                                        zk_config["heron.statemgr.root.path"],
                                                                        topology_id, zk_config["zk.time.offset"])
     file_name = file_path_template.substitute(topology=topology_id,
@@ -242,7 +242,7 @@ def paths_check(graph_client: GremlinClient, zk_config: Dict[str, any],
     zookeeper_url = ".".join(parts)
 
     LOG.info(zookeeper_url)
-    recent_topo_update_ts: dt.datetime =  zookeeper.last_topo_update_ts(zookeeper_url,
+    recent_topo_update_ts: dt.datetime =  zookeeper.last_topo_update_ts_html(zookeeper_url,
                                                                         zk_config["heron.statemgr.root.path"],
                                                                         topology_id, zk_config["zk.time.offset"])
 

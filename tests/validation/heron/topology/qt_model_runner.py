@@ -64,7 +64,7 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
                           - dt.timedelta(hours=total_hours))
 
     zk_config = config["heron.topology.models.config"]
-    last_updated: dt.datetime = zookeeper.last_topo_update_ts(
+    last_updated: dt.datetime = zookeeper.last_topo_update_ts_html(
         zk_config["heron.statemgr.connection.string"],
         zk_config["heron.statemgr.root.path"], topology_id,
         zk_config["zk.time.offset"]).astimezone(dt.timezone.utc)
