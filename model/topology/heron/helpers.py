@@ -6,7 +6,6 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List
 
-
 LOG: logging.Logger = logging.getLogger(__name__)
 
 
@@ -88,9 +87,9 @@ def find_end_to_end_latencies(paths: List[List[str]], waiting_times: pd.DataFram
     for path in paths:
         end_to_end_latency: np.float64 = 0.0
         for x in range(len(path)):
-            if x == 0:
-                continue
             row = merged.loc[(merged["task"] == path[x])]
+            # print("Waiting Time", row["mean_waiting_time"].tolist()[0])
+            # print("Latency ms", row["latency_ms"].tolist()[0])
             end_to_end_latency = row["latency_ms"].tolist()[0] + row["mean_waiting_time"].tolist()[0] + end_to_end_latency
 
         result[tuple(path)] = end_to_end_latency

@@ -10,14 +10,16 @@ import pandas as pd
 from typing import List
 
 from caladrius.metrics.client import MetricsClient
+from caladrius.graph.gremlin.client import GremlinClient
 
 
 class QueueingModels:
     """ Abstract base class for different queueing theory models """
-    def __init__(self, metrics_client: MetricsClient, paths: List,
+    def __init__(self, graph_client: GremlinClient, metrics_client: MetricsClient, paths: List,
                  topology_id: str, cluster: str, environ: str,
                  start: dt.datetime, end: dt.datetime, kwargs: dict):
         self.metrics_client: MetricsClient = metrics_client
+        self.graph_client: GremlinClient = graph_client
         self.topology_id = topology_id
         self.paths = paths
         self.cluster = cluster

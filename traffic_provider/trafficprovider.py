@@ -11,6 +11,12 @@ class TrafficProvider(object):
      or predicted."""
 
     @abstractmethod
+    def service_times(self):
+        """ This function returns the service times for a given topology. Depending on arguments
+        provided, the arrival rates can be for future traffic or for current traffic. """
+        pass
+
+    @abstractmethod
     def arrival_rates(self):
         """ The function returns the arrival rates of the given topology. Depending on arguments
         provided, the arrival rates can be for future traffic or for current traffic. """
