@@ -15,8 +15,8 @@ class CurrentTraffic(TrafficProvider):
      As opposed to the predicted traffic provider, it also models the spout information"""
     # we don't need the traffic config but we can add it to make the arguments the same in both traffic providers
     def __init__(self, metrics_client: HeronMetricsClient, graph_client: GremlinClient, topology_id: str,
-                 cluster: str, environ: str, start: [dt.datetime], end: [dt.datetime], traffic_config: Dict[str, Any],
-                 **other_kwargs) -> None:
+                 cluster: str, environ: str, start: [dt.datetime], end: [dt.datetime],
+                 traffic_config: Dict[str, Any], **other_kwargs) -> None:
         self.graph_client = graph_client
         self.metrics_client: HeronMetricsClient = metrics_client
         self.topology = topology_id
@@ -31,11 +31,12 @@ class CurrentTraffic(TrafficProvider):
         spouts = graph_client.graph_traversal.V().has("topology_id", self.topology). \
             hasLabel("spout").where(outE("logically_connected")).properties('component').value().dedup().toList()
 
-        spout_queue_sizes = metrics_client.get_instance_outgoing_queue_size(
+        spout_queue_processing_rate = metrics_client.get_outgoing_queue_processing_rate(
             topology_id, cluster, environ, start, end)
-        self.spout_queue_sizes = spout_queue_sizes.loc[spout_queue_sizes['component'].isin(spouts)]
+        self.spout_queue_processing_rate = \
+            spout_queue_processing_rate.loc[spout_queue_processing_rate['component'].isin(spouts)]
 
-        num_tuples_added_to_spout_gateway_queue = metrics_client.get_num_tuples_added_to_instance_outgoing_queue(
+        num_tuples_added_to_spout_gateway_queue = metrics_client.get_out_going_queue_arrival_rate(
             self.topology, cluster, environ, start, end)
         self.num_tuples_added_to_spout_gateway_queue = \
             num_tuples_added_to_spout_gateway_queue.loc[
@@ -75,21 +76,16 @@ class CurrentTraffic(TrafficProvider):
         returned in ms
         :return: a dataframe of processing latencies
         """
-        merged = self.spout_queue_sizes. \
+        merged = self.spout_queue_processing_rate. \
             merge(self.num_tuples_added_to_spout_gateway_queue, on=["timestamp", "component", "task", "container"]). \
             merge(self.spout_tuple_set_size, on=["timestamp", "component", "task", "container"])
 
         df: pd.DataFrame = pd.DataFrame(columns=['task', 'latency_ms', "timestamp", "component", "container"])
         for index, data in merged.iterrows():
-            # queue_size is given as an average per minute
 
-            # we multiple by 60 * 1000 to get full queue size per minute
-            # x by 60 for seconds and 1000 for 60 milliseconds
-            # but this may not be correct.
-            queue_size = data["instance-queue-size"] * 60 * 1000
+            # tuples processed in a minute
+            processed_tuples = data["instance-processing-rate"] * data["tuple-set-size"]
 
-            processed_tuples_set = data["tuples-added-to-queue"] - queue_size
-            processed_tuples = processed_tuples_set * data["tuple-set-size"]
             # these are the number of tuples processed per millisecond
             latency = (60 * 1000) / processed_tuples
             df = df.append({'task': data["task"], 'latency_ms': latency,
