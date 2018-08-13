@@ -131,16 +131,17 @@ class HeronMetricsClient(MetricsClient):
         pass
 
     @abstractmethod
-    def get_instance_outgoing_queue_size(self, topology_id: str, cluster: str, environ: str,
-                               start: [dt.datetime] = None, end: [dt.datetime] = None,
-                               **kwargs: Union[str, int, float]) -> DataFrame:
-        """Reports the size of the outgoing queue per instance as an average per minute"""
+    def get_outgoing_queue_processing_rate(self, topology_id: str, cluster: str, environ: str,
+                                           start: [dt.datetime] = None, end: [dt.datetime] = None,
+                                           **kwargs: Union[str, int, float]) -> DataFrame:
+        """Reports the number of tuples drained from the outgoing queue at
+         each instance per minute"""
         pass
 
     @abstractmethod
-    def get_num_tuples_added_to_instance_outgoing_queue(self, topology_id: str, cluster: str, environ: str,
-                                      start: [dt.datetime] = None, end: [dt.datetime] = None,
-                                      **kwargs: Union[str, int, float]) -> DataFrame:
+    def get_out_going_queue_arrival_rate(self, topology_id: str, cluster: str, environ: str,
+                                         start: [dt.datetime] = None, end: [dt.datetime] = None,
+                                         **kwargs: Union[str, int, float]) -> DataFrame:
         """Reports the number of tuples added to the outgoing queue of the topology's
         instances per minute"""
         pass
