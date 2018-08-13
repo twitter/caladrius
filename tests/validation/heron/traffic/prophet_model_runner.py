@@ -263,7 +263,7 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
 
         try:
             # Check we can validate this topology against the times provided
-            last_updated: dt.datetime = zookeeper.last_topo_update_ts(
+            last_updated: dt.datetime = zookeeper.last_topo_update_ts_html(
                 config["heron.statemgr.connection.string"],
                 config["heron.statemgr.root.path"], row.topology,
                 config["zk.time.offset"])
