@@ -88,8 +88,6 @@ def find_end_to_end_latencies(paths: List[List[str]], waiting_times: pd.DataFram
         end_to_end_latency: np.float64 = 0.0
         for x in range(len(path)):
             row = merged.loc[(merged["task"] == path[x])]
-            # print("Waiting Time", row["mean_waiting_time"].tolist()[0])
-            # print("Latency ms", row["latency_ms"].tolist()[0])
             end_to_end_latency = row["latency_ms"].tolist()[0] + row["mean_waiting_time"].tolist()[0] + end_to_end_latency
 
         result[tuple(path)] = end_to_end_latency
