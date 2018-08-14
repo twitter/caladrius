@@ -139,11 +139,10 @@ class SimplePredictor(Predictor):
             if not task_arrivals.empty:
                 # TODO check correctness
                 total_arrivals = task_arrivals[["mean_arrival_rate"]].sum()
-                total_serviced = expected_service_rate.loc[expected_service_rate["task"].isin(row["tasks"])]["mean_service_rate"].sum()
+                total_serviced = expected_service_rate.loc[expected_service_rate["task"].isin(row["tasks"])]["mean_service_rate"].min()
 
                 # we are assuming equal distribution here.
                 parallelism = math.ceil(total_arrivals/total_serviced)
                 if parallelism > row["parallelism"]:
                     new_plan.loc[index, "parallelism"] = (parallelism)
-
         return new_plan

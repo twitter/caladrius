@@ -8,7 +8,7 @@
 # Mac stuff
 *DS_Store
 
-# MyPy 
+# MyPy
 *.mypy_cache/
 
 # Analysis output files

@@ -340,8 +340,8 @@ class HeronProposed(Resource):
         # create an object that gathers together future traffic information. Otherwise, if it is current, then we
         # simply propose a packing plan based on current information
         if traffic_source == self.CURRENT:
-            traffic_provider: CurrentTraffic = CurrentTraffic(self.metrics_client, topology_id, cluster, environ,
-                                                              start, end, **model_kwargs)
+            traffic_provider: CurrentTraffic = CurrentTraffic(self.metrics_client, self.graph_client, topology_id,
+                                                              cluster, environ, start, end, {}, **model_kwargs)
         elif traffic_source == self.FUTURE:
             # the predicted traffic variable is initialized by the future traffic. It contains functions to convert
             # the predicted traffic into arrival rates
