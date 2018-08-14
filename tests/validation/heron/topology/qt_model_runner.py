@@ -28,115 +28,161 @@ from caladrius.common.heron import zookeeper
 LOG: logging.Logger = logging.getLogger(__name__)
 
 
-def compare(metrics_client: HeronMetricsClient,
-            spout_state: Dict[int, Dict[str, float]],
-            actual_instance_arrs: pd.DataFrame,
-            topology_model: QTTopologyModel,
-            topology_id: str, cluster: str, environ: str, start: dt.datetime,
-            end: dt.datetime, metric_bucket_length: int, **kwargs):
+def compare(
+    metrics_client: HeronMetricsClient,
+    spout_state: Dict[int, Dict[str, float]],
+    actual_instance_arrs: pd.DataFrame,
+    topology_model: QTTopologyModel,
+    topology_id: str,
+    cluster: str,
+    environ: str,
+    start: dt.datetime,
+    end: dt.datetime,
+    metric_bucket_length: int,
+    **kwargs,
+):
 
     # Predict the arrival rates from the spout state during this period
-    predicted_instance_arrs, stmgr_arrs = \
-        topology_model.predict_arrival_rates(topology_id, cluster, environ,
-                                             spout_state, start, end,
-                                             metric_bucket_length)
-    predicted_instance_arrs = \
-        (predicted_instance_arrs.rename(
-            index=str, columns={"arrival_rate":
-                                "predicted_arrival_rates_tps"}))
+    predicted_instance_arrs, stmgr_arrs = topology_model.predict_arrival_rates(
+        topology_id, cluster, environ, spout_state, start, end, metric_bucket_length
+    )
+    predicted_instance_arrs = predicted_instance_arrs.rename(
+        index=str, columns={"arrival_rate": "predicted_arrival_rates_tps"}
+    )
 
-    arrs_combined: pd.DataFrame = \
-        actual_instance_arrs.merge(predicted_instance_arrs, on="task")
+    arrs_combined: pd.DataFrame = actual_instance_arrs.merge(
+        predicted_instance_arrs, on="task"
+    )
 
-    arrs_combined["error"] = ((arrs_combined["predicted_arrival_rates_tps"] -
-                               arrs_combined["actual_arrival_rates_tps"]) /
-                              arrs_combined["actual_arrival_rates_tps"])
+    arrs_combined["error"] = (
+        arrs_combined["predicted_arrival_rates_tps"]
+        - arrs_combined["actual_arrival_rates_tps"]
+    ) / arrs_combined["actual_arrival_rates_tps"]
 
     return arrs_combined
 
 
-def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
-        total_hours: int, period_length_secs: int,
-        topology_model: QTTopologyModel, topology_id: str, cluster: str,
-        environ: str, metric_bucket_length: int, **kwargs: Any):
+def run(
+    config: Dict[str, Any],
+    metrics_client: HeronMetricsClient,
+    total_hours: int,
+    period_length_secs: int,
+    topology_model: QTTopologyModel,
+    topology_id: str,
+    cluster: str,
+    environ: str,
+    metric_bucket_length: int,
+    **kwargs: Any,
+):
 
-    start: dt.datetime = (dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
-                          - dt.timedelta(hours=total_hours))
+    start: dt.datetime = (
+        dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+        - dt.timedelta(hours=total_hours)
+    )
 
     zk_config = config["heron.topology.models.config"]
     last_updated: dt.datetime = zookeeper.last_topo_update_ts(
         zk_config["heron.statemgr.connection.string"],
-        zk_config["heron.statemgr.root.path"], topology_id,
-        zk_config["zk.time.offset"]).astimezone(dt.timezone.utc)
+        zk_config["heron.statemgr.root.path"],
+        topology_id,
+        zk_config["zk.time.offset"],
+    ).astimezone(dt.timezone.utc)
 
     if start < last_updated:
-        update_err: str = (f"The provided total hours ({total_hours}) will "
-                           f"result in a start time ({start.isoformat()}) "
-                           f"which is before the last update to "
-                           f"{topology_id}'s physical plan "
-                           f"({last_updated.isoformat()})")
+        update_err: str = (
+            f"The provided total hours ({total_hours}) will "
+            f"result in a start time ({start.isoformat()}) "
+            f"which is before the last update to "
+            f"{topology_id}'s physical plan "
+            f"({last_updated.isoformat()})"
+        )
         LOG.error(update_err)
         raise RuntimeError(update_err)
 
-    periods: List[Tuple[dt.datetime, dt.datetime]] = \
-        validation_helper.create_start_end_list(total_hours,
-                                                period_length_secs)
+    periods: List[
+        Tuple[dt.datetime, dt.datetime]
+    ] = validation_helper.create_start_end_list(total_hours, period_length_secs)
 
     output: pd.DataFrame = None
 
     for i, (source_start, source_end) in enumerate(periods):
-        LOG.info("\n\n\nComparing period %d of %d\n\n", i+1, len(periods))
-        LOG.info("Using metrics sourced from %s to %s",
-                 source_start.isoformat(), source_end.isoformat())
+        LOG.info("\n\n\nComparing period %d of %d\n\n", i + 1, len(periods))
+        LOG.info(
+            "Using metrics sourced from %s to %s",
+            source_start.isoformat(),
+            source_end.isoformat(),
+        )
 
         for j, (traffic_start, traffic_end) in enumerate(periods):
 
             if (traffic_start, traffic_end) == (source_start, source_end):
                 continue
             else:
-                LOG.info("\n\nComparing prediction, using metrics from period "
-                         "%d and traffic from period %d, to actual performance"
-                         " during period %d\n", i, j, j)
+                LOG.info(
+                    "\n\nComparing prediction, using metrics from period %d and traffic "
+                    "from period %d, to actual performance during period %d\n",
+                    i,
+                    j,
+                    j,
+                )
 
-                LOG.info("Using traffic data from period between %s and %s",
-                         traffic_start, traffic_end)
+                LOG.info(
+                    "Using traffic data from period between %s and %s",
+                    traffic_start,
+                    traffic_end,
+                )
 
             try:
 
                 spout_state = heron_helper.get_spout_state(
-                    metrics_client, topology_id, cluster, environ,
-                    config["heron.tracker.url"], traffic_start, traffic_end,
-                    60, "mean")
+                    metrics_client,
+                    topology_id,
+                    cluster,
+                    environ,
+                    config["heron.tracker.url"],
+                    traffic_start,
+                    traffic_end,
+                    60,
+                    "mean",
+                )
 
                 # Get the actual arrival rates at all instances
-                actual_arrs: pd.DataFrame = \
-                    metrics_client.get_arrival_rates(topology_id, cluster,
-                                                     environ, traffic_start,
-                                                     traffic_end, **kwargs)
+                actual_arrs: pd.DataFrame = metrics_client.get_arrival_rates(
+                    topology_id, cluster, environ, traffic_start, traffic_end, **kwargs
+                )
 
-                actual_instance_arrs: pd.DataFrame = \
-                    (actual_arrs.groupby(["component", "task"])
-                     ["arrival_rate_tps"].mean().reset_index()
-                     .rename(index=str, columns={"arrival_rate_tps":
-                                                 "actual_arrival_rates_tps"}))
+                actual_instance_arrs: pd.DataFrame = (
+                    actual_arrs.groupby(["component", "task"])["arrival_rate_tps"]
+                    .mean()
+                    .reset_index()
+                    .rename(
+                        index=str,
+                        columns={"arrival_rate_tps": "actual_arrival_rates_tps"},
+                    )
+                )
 
                 results: pd.DataFrame = compare(
-                    metrics_client, spout_state, actual_instance_arrs,
-                    topology_model, topology_id,
-                    cluster, environ, source_start, source_end,
-                    metric_bucket_length, **kwargs)
+                    metrics_client,
+                    spout_state,
+                    actual_instance_arrs,
+                    topology_model,
+                    topology_id,
+                    cluster,
+                    environ,
+                    source_start,
+                    source_end,
+                    metric_bucket_length,
+                    **kwargs,
+                )
 
             except ConnectionRefusedError as cr_err:
-                LOG.error("Connection was refused with message: %s",
-                          str(cr_err))
+                LOG.error("Connection was refused with message: %s", str(cr_err))
             except ConnectionResetError as cre_err:
-                LOG.error("Connection was reset with message: %s",
-                          str(cre_err))
+                LOG.error("Connection was reset with message: %s", str(cre_err))
             except requests.exceptions.ConnectionError as req_err:
                 LOG.error("Connection error with message: %s", str(req_err))
             except Exception as err:
-                LOG.error("Error (%s) with message: %s", str(type(err)),
-                          str(err))
+                LOG.error("Error (%s) with message: %s", str(type(err)), str(err))
                 raise err
             else:
                 results["source_start"] = source_start
@@ -155,22 +201,42 @@ def run(config: Dict[str, Any], metrics_client: HeronMetricsClient,
 def _create_parser() -> argparse.ArgumentParser:
 
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
-        description=("This program validates the predictions of the "
-                     "Caladrius queuing theory performance modelling system "
-                     "for Heron Topologies"))
+        description=(
+            "This program validates the predictions of the "
+            "Caladrius queuing theory performance modelling system "
+            "for Heron Topologies"
+        )
+    )
 
-    parser.add_argument("--config", required=True,
-                        help=("Path to the config file with data required by "
-                              "all configured models and classes"))
-    parser.add_argument("-q", "--quiet", required=False, action="store_true",
-                        help=("Optional flag indicating if console log output "
-                              "should be suppressed"))
-    parser.add_argument("--debug", required=False, action="store_true",
-                        help=("Optional flag indicating if debug level "
-                              "information should be displayed"))
-    parser.add_argument("-od", "--output_dir", required=False,
-                        help=("Optional output directory to save results "
-                              "DataFrames too."))
+    parser.add_argument(
+        "--config",
+        required=True,
+        help=(
+            "Path to the config file with data required by "
+            "all configured models and classes"
+        ),
+    )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        required=False,
+        action="store_true",
+        help=("Optional flag indicating if console log output " "should be suppressed"),
+    )
+    parser.add_argument(
+        "--debug",
+        required=False,
+        action="store_true",
+        help=(
+            "Optional flag indicating if debug level " "information should be displayed"
+        ),
+    )
+    parser.add_argument(
+        "-od",
+        "--output_dir",
+        required=False,
+        help=("Optional output directory to save results " "DataFrames too."),
+    )
 
     parser.add_argument("-t", "--topology", required=True)
     parser.add_argument("-c", "--cluster", required=True)
@@ -188,8 +254,7 @@ if __name__ == "__main__":
     try:
         CONFIG: Dict[str, Any] = loader.load_config(ARGS.config)
     except FileNotFoundError:
-        print(f"Config file: {ARGS.config} was not found. Aborting...",
-              file=sys.stderr)
+        print(f"Config file: {ARGS.config} was not found. Aborting...", file=sys.stderr)
         sys.exit(1)
     else:
         if not ARGS.quiet:
@@ -204,31 +269,46 @@ if __name__ == "__main__":
     logs.setup(console=(not ARGS.quiet), logfile=LOG_FILE, debug=ARGS.debug)
 
     # GRAPH CLIENT
-    graph_client: GremlinClient = \
-        loader.get_class(CONFIG["graph.client"])(CONFIG["graph.client.config"])
+    graph_client: GremlinClient = loader.get_class(CONFIG["graph.client"])(
+        CONFIG["graph.client.config"]
+    )
 
     # HERON METRICS CLIENT
-    metrics_client: HeronMetricsClient = \
-        loader.get_class(CONFIG["heron.metrics.client"])(
-            CONFIG["heron.metrics.client.config"])
+    metrics_client: HeronMetricsClient = loader.get_class(
+        CONFIG["heron.metrics.client"]
+    )(CONFIG["heron.metrics.client.config"])
 
     # TOPOLOGY PERFORMANCE MODEL
     qt_model: QTTopologyModel = QTTopologyModel(
-        CONFIG["heron.topology.models.config"], metrics_client, graph_client)
+        CONFIG["heron.topology.models.config"], metrics_client, graph_client
+    )
 
     results: pd.DataFrame = run(
-        CONFIG, metrics_client, ARGS.hours, ARGS.period, qt_model,
-        ARGS.topology, ARGS.cluster, ARGS.environ,
-        int(CONFIG["heron.topology.models.config"]["metric.bucket.length"]))
+        CONFIG,
+        metrics_client,
+        ARGS.hours,
+        ARGS.period,
+        qt_model,
+        ARGS.topology,
+        ARGS.cluster,
+        ARGS.environ,
+        int(CONFIG["heron.topology.models.config"]["metric.bucket.length"]),
+    )
 
     if ARGS.output_dir:
 
         if not os.path.exists(ARGS.output_dir):
             os.makedirs(ARGS.output_dir)
 
-        results.to_csv(os.path.join(ARGS.output_dir,
-                                    (f"{ARGS.topology}_{ARGS.cluster}_"
-                                     f"{ARGS.environ}_arrival_rates.csv")))
+        results.to_csv(
+            os.path.join(
+                ARGS.output_dir,
+                (
+                    f"{ARGS.topology}_{ARGS.cluster}_"
+                    f"{ARGS.environ}_arrival_rates.csv"
+                ),
+            )
+        )
 
     print("\n#### ARRIVAL RATE VALIDATION ####\n")
 
