@@ -15,8 +15,8 @@ class CurrentTraffic(TrafficProvider):
      As opposed to the predicted traffic provider, it also models the spout information"""
     # we don't need the traffic config but we can add it to make the arguments the same in both traffic providers
     def __init__(self, metrics_client: HeronMetricsClient, graph_client: GremlinClient, topology_id: str,
-                 cluster: str, environ: str, start: [dt.datetime], end: [dt.datetime], traffic_config: Dict[str, Any],
-                 **other_kwargs) -> None:
+                 cluster: str, environ: str, start: [dt.datetime], end: [dt.datetime],
+                 traffic_config: Dict[str, Any], **other_kwargs) -> None:
         self.graph_client = graph_client
         self.metrics_client: HeronMetricsClient = metrics_client
         self.topology = topology_id
