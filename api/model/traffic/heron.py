@@ -60,15 +60,10 @@ class HeronTraffic(Resource):
 
         super().__init__()
 
-    def get(self) -> Tuple[Dict[str, Any], int]:
+    def get(self, topology_id) -> Tuple[Dict[str, Any], int]:
 
         # Make sure we have the args we need
         errors: List[Dict[str, str]] = []
-
-        if "topology_id" not in request.args:
-            errors.append({"type": "MissingParameter",
-                           "error": ("'topology_id' parameter should be "
-                                     "supplied")})
 
         if "cluster" not in request.args:
             errors.append({"type": "MissingParameter",
@@ -89,7 +84,7 @@ class HeronTraffic(Resource):
             return {"errors": errors}, 400
 
         LOG.info("Traffic prediction requested for Heron topology: %s on "
-                 "cluster: %s in environment: %s", request.args["topology_id"],
+                 "cluster: %s in environment: %s", topology_id,
                  request.args["cluster"], request.args["environ"])
 
         # Make sure we have a current graph representing the physical plan for
@@ -97,11 +92,11 @@ class HeronTraffic(Resource):
         try:
             graph_check(self.graph_client, self.model_config, self.tracker_url,
                         request.args["cluster"], request.args["environ"],
-                        request.args["topology_id"])
+                        topology_id)
         except Exception as err:
             LOG.error("Error running graph check for topology: %s -> %s",
-                      request.args["topology_id"], str(err))
-            errors.append({"topology": request.args["topology_id"],
+                      topology_id, str(err))
+            errors.append({"topology": topology_id,
                            "type": str(type(err)),
                            "error": str(err)})
             return {"errors": errors}, 400
@@ -123,7 +118,6 @@ class HeronTraffic(Resource):
         # Remove the models list from the kwargs as it is only needed by this
         # method, same with topology_id, cluster and environ values
         model_kwargs.pop("model")
-        model_kwargs.pop("topology_id")
         model_kwargs.pop("cluster")
         model_kwargs.pop("environ")
 
@@ -135,7 +129,7 @@ class HeronTraffic(Resource):
 
             try:
                 results: Dict[str, Any] = model.predict_traffic(
-                    topology_id=request.args.get("topology_id"),
+                    topology_id=topology_id,
                     cluster=request.args.get("cluster"),
                     environ=request.args.get("environ"),
                     **model_kwargs)
