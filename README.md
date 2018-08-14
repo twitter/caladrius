@@ -126,7 +126,7 @@ In this example, the WindowedWordCountTopoology has three components (spouts -> 
 Each operator in the job has one running task/instance only.
 
     curl -H 'Content-Type: application/json' -d '{ "1" : {"default": 101.4}, "2": {"default": 104.3}, "3" : {"default" : 101.5}  }'  
-    -X POST "<Caladrius URL>:5000/model/topology/heron/current/WindowedWordCountTopology?cluster=smf1&environ=test&model=queueing_theory&source_hours=2"
+    -X POST "<Caladrius URL>:5000/model/topology/heron/current/WindowedWordCountTopology?cluster=<cluster-name>&environ=test&model=queueing_theory&source_hours=2"
     
 Caveat: Caladrius currently does not support calculations for topologies that have only two levels. This is because
 a topology with two levels consists of spouts (with only outgoing streams) and sink bolts (with possibly only incoming
