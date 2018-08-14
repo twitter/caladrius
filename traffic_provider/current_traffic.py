@@ -15,8 +15,8 @@ class CurrentTraffic(TrafficProvider):
      As opposed to the predicted traffic provider, it also models the spout information"""
     # we don't need the traffic config but we can add it to make the arguments the same in both traffic providers
     def __init__(self, metrics_client: HeronMetricsClient, graph_client: GremlinClient, topology_id: str,
-                 cluster: str, environ: str, start: [dt.datetime], end: [dt.datetime],
-                 traffic_config: Dict[str, Any], **other_kwargs) -> None:
+                 cluster: str, environ: str, start: [dt.datetime], end: [dt.datetime], traffic_config: Dict[str, Any],
+                 **other_kwargs) -> None:
         self.graph_client = graph_client
         self.metrics_client: HeronMetricsClient = metrics_client
         self.topology = topology_id
@@ -82,10 +82,8 @@ class CurrentTraffic(TrafficProvider):
 
         df: pd.DataFrame = pd.DataFrame(columns=['task', 'latency_ms', "timestamp", "component", "container"])
         for index, data in merged.iterrows():
-
             # tuples processed in a minute
             processed_tuples = data["instance-processing-rate"] * data["tuple-set-size"]
-
             # these are the number of tuples processed per millisecond
             latency = (60 * 1000) / processed_tuples
             df = df.append({'task': data["task"], 'latency_ms': latency,
