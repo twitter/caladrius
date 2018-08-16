@@ -85,7 +85,6 @@ class PredictedTraffic(TrafficProvider):
         bolt_service_times = self.metrics_client.get_service_times(self.topology, self.cluster,
                                                                    self.environ, self.start, self.end, **self.kwargs)
         # Drop the system streams
-        bolt_service_times = (bolt_service_times[~bolt_service_times["stream"].str.contains("__")])
         if bolt_service_times.empty:
             raise Exception("Service times for the topology's bolts are unavailable")
 

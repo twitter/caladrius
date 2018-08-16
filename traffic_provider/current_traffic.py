@@ -84,19 +84,18 @@ class CurrentTraffic(TrafficProvider):
         for index, data in merged.iterrows():
             # tuples processed in a minute
             processed_tuples = data["instance-processing-rate"] * data["tuple-set-size"]
+            if (processed_tuples > 0):
             # these are the number of tuples processed per millisecond
-            latency = (60 * 1000) / processed_tuples
-            df = df.append({'task': data["task"], 'latency_ms': latency,
+                latency = (60 * 1000) / processed_tuples
+                df = df.append({'task': data["task"], 'latency_ms': latency,
                             'component': data["component"], "container": data["container"],
                             "timestamp": data["timestamp"]}, ignore_index=True)
 
         bolt_service_times = self.metrics_client.get_service_times(self.topology, self.cluster,
                                                                    self.environ, self.start, self.end, **self.kwargs)
-        # Drop the system streams
-        bolt_service_times = (bolt_service_times[~bolt_service_times["stream"].str.contains("__")])
         if bolt_service_times.empty:
             raise Exception("Service times for the topology's bolts are unavailable")
 
-        bolt_service_times.drop(["source_component", "stream"], axis=1, inplace=True)
+        bolt_service_times.drop(["stream"], axis=1, inplace=True)
 
         return df.append(bolt_service_times, sort=True)

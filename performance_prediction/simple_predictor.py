@@ -52,7 +52,6 @@ class SimplePredictor(Predictor):
 
         # now check if parallelism has to be updated
         new_plan: pd.DataFrame = self.process_parallelism(new_plan, expected_service_rate)
-
         return new_plan.to_json()
 
     def process_resource_bottlenecks(self, merged: pd.DataFrame) -> (pd.DataFrame, pd.DataFrame):
@@ -70,7 +69,7 @@ class SimplePredictor(Predictor):
         # we find the maximum proportion by which CPU and RAM need to be increased per component
         maximum: pd.DataFrame = temp_merged.groupby("component").max().reset_index()
 
-        # then, we multiply the resources already provisioned by the max proporition
+        # then, we multiply the resources already provisioned by the max proportion
         # they need to be increased by
         for index, row in maximum.iterrows():
             if row["prop-load"] > 1:
@@ -134,15 +133,19 @@ class SimplePredictor(Predictor):
 
         # sum up arrival rate per component
         arrival_rate: pd.DataFrame = self.queue.arrival_rate.copy()
+
         for index, row in new_plan.iterrows():
             task_arrivals = arrival_rate.loc[arrival_rate["task"].isin(row["tasks"])]
+
+            min_serviced = expected_service_rate.loc[expected_service_rate["task"].isin(row["tasks"])][
+                "mean_service_rate"].min()
+
             if not task_arrivals.empty:
-                # TODO check correctness
-                total_arrivals = task_arrivals[["mean_arrival_rate"]].sum()
-                total_serviced = expected_service_rate.loc[expected_service_rate["task"].isin(row["tasks"])]["mean_service_rate"].min()
+                total_arrivals = task_arrivals["mean_arrival_rate"].sum()
 
                 # we are assuming equal distribution here.
-                parallelism = math.ceil(total_arrivals/total_serviced)
+                parallelism = math.ceil(total_arrivals/min_serviced)
                 if parallelism > row["parallelism"]:
                     new_plan.loc[index, "parallelism"] = (parallelism)
+
         return new_plan
