@@ -24,6 +24,8 @@ from gremlin_python.process.graph_traversal import outE, not_
 
 LOG: logging.Logger = logging.getLogger(__name__)
 
+HISTORICAL_METRICS_DURATION = 120
+
 
 def _create_parser() -> argparse.ArgumentParser:
 
@@ -66,6 +68,7 @@ if __name__ == "__main__":
             print("\nStarting Caladrius Heron Validation\n")
             print(f"Loading configuration from file: {ARGS.config}")
 
+    CONFIG: Dict[str, Any] = loader.load_config(ARGS.config)
     if not os.path.exists(CONFIG["log.file.dir"]):
         os.makedirs(CONFIG["log.file.dir"])
 
@@ -87,6 +90,12 @@ if __name__ == "__main__":
     cluster = ARGS.cluster
     environ = ARGS.environ
     topology = ARGS.topology
+
+    topology_latencies: pd.DataFrame = pd.DataFrame(columns=['topology', 'av_actual_latency', 'std_actual_latency',
+                                                             'av_calculated_latency', 'std_predicted_latency'])
+    system_metrics: pd.DataFrame = pd.DataFrame(columns=['topology', 'component', 'av_gc', 'std_gc',
+                                                         'av_cpu_load', 'std_cpu_load'])
+
     # Make sure we have a current graph representing the physical plan for
     # the topology
     graph_check(graph_client, CONFIG["heron.topology.models.config"], CONFIG["heron.tracker.url"],
@@ -94,17 +103,18 @@ if __name__ == "__main__":
 
     # Make sure we have a file containing all paths for the job
     paths_check(graph_client, CONFIG["heron.topology.models.config"], cluster, environ, topology)
-
     model_kwargs = dict()
 
     model_kwargs["zk.time.offset"] = CONFIG["heron.topology.models.config"]["zk.time.offset"]
     model_kwargs["heron.statemgr.root.path"] = CONFIG["heron.topology.models.config"]["heron.statemgr.root.path"]
-    model_kwargs["heron.statemgr.connection.string"] = CONFIG["heron.topology.models.config"]["heron.statemgr.connection.string"]
+    model_kwargs["heron.statemgr.connection.string"] = \
+        CONFIG["heron.topology.models.config"]["heron.statemgr.connection.string"]
 
     now = dt.datetime.now()
-    start, end = now - dt.timedelta(minutes=2), now
-    traffic_provider: CurrentTraffic = CurrentTraffic(metrics_client, topology,
-                                                      cluster, environ, start, end, **model_kwargs)
+    start, end = now - dt.timedelta(minutes=HISTORICAL_METRICS_DURATION), now
+
+    traffic_provider: CurrentTraffic = CurrentTraffic(metrics_client, graph_client, topology, cluster,
+                                                      environ, start, end, {}, **model_kwargs)
     qt: QTTopologyModel = QTTopologyModel(CONFIG["heron.topology.models.config"], metrics_client, graph_client)
     results = pd.DataFrame(qt.find_current_instance_waiting_times(topology_id=topology, cluster=cluster, environ=environ,
                                                            traffic_source=traffic_provider, start=start, end=end,
@@ -123,13 +133,28 @@ if __name__ == "__main__":
         else:
             actual_latencies.append(result, ignore_index=True)
 
-    results.to_csv(os.path.join(ARGS.output_dir,
-                                (f"{ARGS.topology}_{ARGS.cluster}_"
-                                 f"{ARGS.environ}_predicted_end_to_end_latencies.csv")))
+    topology_latencies = topology_latencies.append({'topology': topology,
+                                                    'av_actual_latency': actual_latencies['average_latency'].mean(),
+                                                    'std_actual_latency': actual_latencies['average_latency'].std(),
+                                                    'av_calculated_latency': results['latency'].mean(),
+                                                    'std_predicted_latency': results['latency'].std()},
+                                                   ignore_index=True)
+    CPU_LOAD = metrics_client.get_cpu_load(topology, cluster, environ, start, end)
+    GC_TIME = metrics_client.get_gc_time(topology, cluster, environ, start, end)
 
-    actual_latencies.to_csv(os.path.join(ARGS.output_dir,
-                                (f"{ARGS.topology}_{ARGS.cluster}_"
-                                 f"{ARGS.environ}_actual_end_to_end_latencies.csv")))
+    load = pd.DataFrame(columns=['topology', 'component', 'av_cpu_load', 'std_cpu_load'])
+    gc = pd.DataFrame(columns = ['topology', 'component', 'av_gc', 'std_gc'])
+    for component, data in CPU_LOAD.groupby(["component"]):
+        load = load.append({"topology": topology, "component": component,
+                            "av_cpu_load": data["cpu-load"].mean(), "std_cpu_load": data["cpu-load"].std()},
+                           ignore_index=True)
 
+    for component, data in GC_TIME.groupby(["component"]):
+        gc = gc.append({"topology": topology,  "component": component,
+                        "av_gc": data["gc-time"].mean(), "std_gc": data["gc-time"].std()},
+                       ignore_index=True)
+    merged = load.merge(gc, on=["component", "topology"])
+    system_metrics = system_metrics.append(merged, ignore_index=True, sort=True)
 
-
+    system_metrics.to_csv(ARGS.output_dir, f"{ARGS.topology}_{ARGS.cluster}_{ARGS.environ}_system_metrics.csv")
+    topology_latencies.to_csv(ARGS.output_dir, f"{ARGS.topology}_{ARGS.cluster}_{ARGS.environ}_latencies.csv")
