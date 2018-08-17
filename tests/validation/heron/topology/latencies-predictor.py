@@ -141,9 +141,11 @@ if __name__ == "__main__":
                                                    ignore_index=True)
     CPU_LOAD = metrics_client.get_cpu_load(topology, cluster, environ, start, end)
     GC_TIME = metrics_client.get_gc_time(topology, cluster, environ, start, end)
+    CAPACITY = metrics_client.get_capacity(topology, cluster, environ, start, end)
 
     load = pd.DataFrame(columns=['topology', 'component', 'av_cpu_load', 'std_cpu_load'])
     gc = pd.DataFrame(columns = ['topology', 'component', 'av_gc', 'std_gc'])
+    capacity = pd.DataFrame(columns=['topology', 'component', 'av_capacity', 'std_capacity'])
     for component, data in CPU_LOAD.groupby(["component"]):
         load = load.append({"topology": topology, "component": component,
                             "av_cpu_load": data["cpu-load"].mean(), "std_cpu_load": data["cpu-load"].std()},
@@ -153,7 +155,13 @@ if __name__ == "__main__":
         gc = gc.append({"topology": topology,  "component": component,
                         "av_gc": data["gc-time"].mean(), "std_gc": data["gc-time"].std()},
                        ignore_index=True)
+
+    for component, data in CAPACITY.groupby(["component"]):
+        capacity = capacity.append({"topology": topology,  "component": component,
+                        "av_capacity": data["capacity"].mean(), "std_capacity": data["capacity"].std()},
+                       ignore_index=True)
     merged = load.merge(gc, on=["component", "topology"])
+    merged = merged.merge(capacity, on=["component", "topology"])
     system_metrics = system_metrics.append(merged, ignore_index=True, sort=True)
 
     system_metrics.to_csv(ARGS.output_dir, f"{ARGS.topology}_{ARGS.cluster}_{ARGS.environ}_system_metrics.csv")
