@@ -13,3 +13,7 @@
 
 # Analysis output files
 *.csv
+
+# IntelliJ
+.idea/
+
