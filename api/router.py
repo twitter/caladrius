@@ -106,7 +106,7 @@ def create_router(config: Dict[str, Any]) -> Flask:
                      '/model/topology/heron/packingplan/<string:topology_id>/<string:traffic_source>',
                      resource_class_kwargs={
                          'model_classes': heron_topology_model_classes,
-                         'model_config': config["heron.packingpplans.models.config"],
+                         'model_config': config["heron.topology.models.config"],
                          'traffic_config': config['heron.traffic.models.config'],
                          'metrics_client': heron_metrics_client,
                          'graph_client': graph_client,
