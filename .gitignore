@@ -13,3 +13,8 @@
 
 # Analysis output files
 *.csv
+
+# IntelliJ
+.idea/
+caladrius.iml
+
