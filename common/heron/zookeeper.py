@@ -60,7 +60,7 @@ def last_topo_update_ts_html(zk_connection: str, zk_root_node: str,
              "topology: %s", zk_connection, topology_id)
 
     zk_str: str = \
-        f"http://{zk_connection}/{zk_root_node}/pplans/{topology_id}/"
+        f"http://{zk_connection}/tree{zk_root_node}/pplans/{topology_id}/"
 
     response: requests.Response = requests.get(zk_str)
 
