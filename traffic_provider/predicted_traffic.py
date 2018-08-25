@@ -82,12 +82,12 @@ class PredictedTraffic(TrafficProvider):
 
     def service_times(self):
         """TODO: Also predict service times for all components!"""
-        bolt_service_times = self.metrics_client.get_service_times(self.topology, self.cluster,
+        bolt_service_times = self.metrics_client.get_service_times(self.topology_id, self.cluster,
                                                                    self.environ, self.start, self.end, **self.kwargs)
         # Drop the system streams
         if bolt_service_times.empty:
             raise Exception("Service times for the topology's bolts are unavailable")
 
-        bolt_service_times.drop(["source_component", "stream"], axis=1, inplace=True)
+        bolt_service_times.drop(["component", "stream"], axis=1, inplace=True)
 
         return bolt_service_times
